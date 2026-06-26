@@ -35,24 +35,27 @@ try {
   const page = await fetch(baseUrl);
   const html = await page.text();
   assert(page.status === 200, `Expected page status 200, got ${page.status}`);
-  assert(html.includes('id="deviceImportForm"'), 'Expected SDK device import form on the test page.');
-  assert(html.includes('Без Tuya developer cloud keys'), 'Expected no-developer-cloud-key wording.');
+  assert(html.includes('id="tuyaLinkForm"'), 'Expected Tuya link form on the test page.');
+  assert(html.includes('Логин и импорт на устройства'), 'Expected real login/import submit button.');
+  assert(html.includes('без developer акаунт'), 'Expected no-developer-account wording on the page.');
+  assert(html.includes('value="49"'), 'Expected international country code 49 option.');
+  assert(html.includes('value="359"'), 'Expected Bulgaria country code 359 option.');
 
-  const importResponse = await fetch(`${baseUrl}/api/monik/devices/import`, {
+  const config = await fetch(`${baseUrl}/api/tuya/config`);
+  assert(config.status === 200, `Expected config status 200, got ${config.status}`);
+  const configPayload = await config.json();
+  assert(configPayload.countryCode === '49', `Expected default country code 49, got ${configPayload.countryCode}`);
+
+  const link = await fetch(`${baseUrl}/api/tuya/link`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ devices: [{ devId: 'real-device-id', name: 'Lamp', online: true }] }),
+    body: JSON.stringify({ username: 'missing-config-check', password: 'missing-config-check' }),
   });
-  const importPayload = await importResponse.json();
-  assert(importResponse.status === 200, `Expected import status 200, got ${importResponse.status}`);
-  assert(importPayload.imported === true, 'Expected imported=true.');
-  assert(importPayload.importedDevices === 1, `Expected one imported device, got ${importPayload.importedDevices}`);
+  const payload = await link.json();
+  assert(link.status === 400, `Expected missing-config status 400, got ${link.status}`);
+  assert(payload.linked === false, 'Expected linked=false when Tuya credentials are not configured.');
 
-  const devices = await fetch(`${baseUrl}/api/monik/devices`);
-  const devicesPayload = await devices.json();
-  assert(devicesPayload.importedDevices === 1, 'Expected stored imported device.');
-
-  console.log(`OK: SDK bridge works at ${baseUrl}`);
+  console.log(`OK: test page works at ${baseUrl}`);
 } finally {
   server.kill();
 }

@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DeviceImportError, getImportedDevices, importDevicesFromSdk } from './deviceStore.js';
+import { linkTuyaAccountAndImportDevices, publicTuyaConfig, TuyaLinkError } from './tuyaClient.js';
 
 const PORT = Number(process.env.PORT || 4173);
 const PUBLIC_DIR = fileURLToPath(new URL('../public/', import.meta.url));
@@ -51,19 +51,22 @@ async function serveStatic(request, response) {
   }
 }
 
-async function handleDeviceImport(request, response) {
+async function handleLinkTuya(request, response) {
   try {
-    const payload = await readJsonBody(request);
-    const result = importDevicesFromSdk(payload);
+    const credentials = await readJsonBody(request);
+    const result = await linkTuyaAccountAndImportDevices(credentials);
 
     sendJson(response, 200, {
-      imported: true,
-      ...result,
+      linked: true,
+      uid: result.account.uid,
+      tokenExpiresIn: result.account.expireTime,
+      importedDevices: Array.isArray(result.devices) ? result.devices.length : 0,
+      devices: result.devices,
     });
   } catch (error) {
-    const statusCode = error instanceof DeviceImportError ? 400 : 500;
+    const statusCode = error instanceof TuyaLinkError ? 400 : 500;
     sendJson(response, statusCode, {
-      imported: false,
+      linked: false,
       error: error.message,
       details: error.details,
     });
@@ -74,17 +77,17 @@ async function route(request, response) {
   const url = new URL(request.url, `http://${request.headers.host}`);
 
   if (request.method === 'GET' && url.pathname === '/health') {
-    sendJson(response, 200, { ok: true, mode: 'tuya-mobile-sdk-bridge' });
+    sendJson(response, 200, { ok: true });
     return;
   }
 
-  if (request.method === 'GET' && url.pathname === '/api/monik/devices') {
-    sendJson(response, 200, getImportedDevices());
+  if (request.method === 'GET' && url.pathname === '/api/tuya/config') {
+    sendJson(response, 200, publicTuyaConfig());
     return;
   }
 
-  if (request.method === 'POST' && url.pathname === '/api/monik/devices/import') {
-    await handleDeviceImport(request, response);
+  if (request.method === 'POST' && url.pathname === '/api/tuya/link') {
+    await handleLinkTuya(request, response);
     return;
   }
 
@@ -101,5 +104,5 @@ createServer((request, response) => {
     sendJson(response, 500, { error: error.message });
   });
 }).listen(PORT, () => {
-  console.log(`MoniK Tuya SDK bridge listening on http://localhost:${PORT}`);
+  console.log(`MoniK Tuya link server listening on http://localhost:${PORT}`);
 });

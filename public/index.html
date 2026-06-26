@@ -3,36 +3,55 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>MoniK · Tuya SDK bridge</title>
+    <title>MoniK · Тест Tuya login</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="page-shell">
       <section class="test-panel" aria-labelledby="page-title">
         <div class="status-strip">
-          <strong>MoniK server-side bridge</strong>
+          <strong>Работеща тест страница</strong>
           <span id="serverStatus">Проверка на MoniK server...</span>
         </div>
 
-        <p class="eyebrow">Без Tuya developer cloud keys</p>
-        <h1 id="page-title">Импорт от Tuya mobile SDK</h1>
+        <p class="eyebrow">MoniK Server → Tuya SDK</p>
+        <h1 id="page-title">Свържи реален Tuya акаунт</h1>
         <p class="intro">
-          Този server вече не иска Tuya Access ID, Secret или developer акаунт. Android/iOS SDK клиентът взема
-          устройствата чрез вече съществуващия Tuya user акаунт и ги подава към MoniK чрез endpoint-а по-долу.
+          Това не е демо табло. Потребителят въвежда само съществуващ Tuya акаунт — не developer акаунт.
+          MoniK server държи connector настройките, прави login, взема UID и импортва устройствата от Tuya.
         </p>
 
         <div class="endpoint-box">
-          <span>Endpoint за SDK клиента:</span>
-          <code>POST /api/monik/devices/import</code>
+          <span>Адрес за тест:</span>
+          <code>http://localhost:4173</code>
         </div>
 
-        <form id="deviceImportForm" class="link-form">
+        <form id="tuyaLinkForm" class="link-form">
           <label>
-            <span>JSON от Tuya mobile SDK клиента</span>
-            <textarea name="devicesJson" required placeholder='{"devices":[{"devId":"real-device-id","name":"Lamp","online":true}]}'></textarea>
+            <span>Tuya username / email / телефон — без developer акаунт</span>
+            <input name="username" autocomplete="username" required placeholder="real-tuya-account@example.com" />
           </label>
 
-          <button type="submit">Импорт в MoniK server</button>
+          <label>
+            <span>Tuya парола</span>
+            <input name="password" type="password" autocomplete="current-password" required placeholder="Въведи реалната Tuya парола" />
+          </label>
+
+          <div class="form-row">
+            <label>
+              <span>Код държава</span>
+              <select id="countryCode" name="countryCode" required>
+                <option value="49">49 · International / Germany</option>
+                <option value="359">359 · България</option>
+              </select>
+            </label>
+            <label>
+              <span>Tuya schema / app schema</span>
+              <input id="schema" name="schema" required />
+            </label>
+          </div>
+
+          <button type="submit">Логин и импорт на устройства</button>
         </form>
 
         <section class="result" aria-live="polite">
@@ -40,7 +59,7 @@
             <h2>Отговор от MoniK server</h2>
             <button id="clearResult" class="secondary-button" type="button">Изчисти</button>
           </div>
-          <pre id="resultBox">Готово за реален SDK import. Няма developer credentials в този server.</pre>
+          <pre id="resultBox">Готово за реален Tuya login.</pre>
         </section>
       </section>
     </main>

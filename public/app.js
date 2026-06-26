@@ -1,6 +1,8 @@
-const form = document.querySelector('#deviceImportForm');
+const form = document.querySelector('#tuyaLinkForm');
 const resultBox = document.querySelector('#resultBox');
 const serverStatus = document.querySelector('#serverStatus');
+const countryCodeInput = document.querySelector('#countryCode');
+const schemaInput = document.querySelector('#schema');
 const clearResultButton = document.querySelector('#clearResult');
 
 function showResult(payload, state = '') {
@@ -8,12 +10,14 @@ function showResult(payload, state = '') {
   resultBox.textContent = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
 }
 
-async function loadServerStatus() {
+async function loadServerConfig() {
   try {
-    const response = await fetch('/health');
-    const status = await response.json();
+    const response = await fetch('/api/tuya/config');
+    const config = await response.json();
 
-    serverStatus.textContent = `online · ${status.mode}`;
+    countryCodeInput.value = config.countryCode || '49';
+    schemaInput.value = config.schema || 'tuyaSmart';
+    serverStatus.textContent = `online · ${config.baseUrl}`;
     serverStatus.className = 'is-success';
   } catch (error) {
     serverStatus.textContent = `offline · ${error.message}`;
@@ -26,29 +30,29 @@ form.addEventListener('submit', async (event) => {
 
   const submitButton = form.querySelector('button[type="submit"]');
   const formData = new FormData(form);
-  const devicesJson = formData.get('devicesJson');
+  const body = Object.fromEntries(formData.entries());
 
   submitButton.disabled = true;
-  showResult('MoniK server приема устройства от mobile SDK клиента...', '');
+  showResult('MoniK server прави login със съществуващия Tuya акаунт. Developer акаунт от потребителя не се иска.', '');
 
   try {
-    const response = await fetch('/api/monik/devices/import', {
+    const response = await fetch('/api/tuya/link', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: devicesJson,
+      body: JSON.stringify(body),
     });
     const payload = await response.json();
 
     showResult(payload, response.ok ? 'is-success' : 'is-error');
   } catch (error) {
-    showResult({ imported: false, error: error.message }, 'is-error');
+    showResult({ linked: false, error: error.message }, 'is-error');
   } finally {
     submitButton.disabled = false;
   }
 });
 
 clearResultButton.addEventListener('click', () => {
-  showResult('Готово за реален SDK import. Няма developer credentials в този server.');
+  showResult('Готово за реален Tuya login.');
 });
 
-loadServerStatus();
+loadServerConfig();
