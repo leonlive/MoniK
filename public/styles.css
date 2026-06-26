@@ -94,6 +94,22 @@ h2 { margin-bottom: 0; }
   line-height: 1.7;
 }
 
+.flow-box {
+  margin: 22px 0;
+  border: 1px solid #bbf7d0;
+  border-radius: 18px;
+  background: #f0fdf4;
+  color: #14532d;
+  padding: 14px 18px;
+}
+
+.flow-box ol {
+  margin: 10px 0 0;
+  padding-left: 22px;
+}
+
+.flow-box li { margin: 6px 0; }
+
 .endpoint-box {
   margin: 22px 0 28px;
   border: 1px dashed #93c5fd;

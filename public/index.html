@@ -17,9 +17,18 @@
         <p class="eyebrow">Без Tuya developer cloud keys</p>
         <h1 id="page-title">Импорт от Tuya mobile SDK</h1>
         <p class="intro">
-          Този server вече не иска Tuya Access ID, Secret или developer акаунт. Android/iOS SDK клиентът взема
-          устройствата чрез вече съществуващия Tuya user акаунт и ги подава към MoniK чрез endpoint-а по-долу.
+          Тук няма поле за email и парола, защото login-ът се прави в MoniK Android/iOS приложението чрез Tuya mobile SDK.
+          Този server само приема устройствата, които приложението вече е взело от съществуващия Tuya user акаунт.
         </p>
+
+        <div class="flow-box">
+          <strong>Правилен ред:</strong>
+          <ol>
+            <li>MoniK app показва Tuya login екран за email/парола.</li>
+            <li>Tuya mobile SDK връща homes/devices в приложението.</li>
+            <li>Приложението праща devices към този MoniK server.</li>
+          </ol>
+        </div>
 
         <div class="endpoint-box">
           <span>Endpoint за SDK клиента:</span>

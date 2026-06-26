@@ -37,6 +37,7 @@ try {
   assert(page.status === 200, `Expected page status 200, got ${page.status}`);
   assert(html.includes('id="deviceImportForm"'), 'Expected SDK device import form on the test page.');
   assert(html.includes('Без Tuya developer cloud keys'), 'Expected no-developer-cloud-key wording.');
+  assert(html.includes('Тук няма поле за email и парола'), 'Expected explanation that login is in the MoniK app.');
 
   const importResponse = await fetch(`${baseUrl}/api/monik/devices/import`, {
     method: 'POST',

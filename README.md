@@ -20,6 +20,20 @@ POST /api/monik/devices/import
 GET /api/monik/devices
 ```
 
+
+## Къде се въвеждат email и парола?
+
+Не в тази browser страница. Email/парола трябва да се въвеждат в MoniK Android/iOS приложението, където е Tuya mobile SDK и manifest setup-ът.
+
+Този Node server е само приемник:
+
+1. MoniK app показва Tuya login screen.
+2. Tuya mobile SDK връща homes/devices в app-а.
+3. App-ът праща реалните устройства към `POST /api/monik/devices/import`.
+4. Тази browser страница е само тестов начин ръчно да симулираш стъпка 3 с JSON payload.
+
+Файлове като private key/public key, `.pem`, `.key`, `.pub`, `.jks`, `.keystore` не се ползват от този Node server и не трябва да се commit-ват. Добавени са в `.gitignore`.
+
 ## Локален тест на server-а
 
 ```bash
