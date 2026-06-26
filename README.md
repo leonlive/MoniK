@@ -35,6 +35,38 @@ http://localhost:4173
 
 Тест страницата не прави fake Tuya login и не иска developer credentials. Тя служи да подадеш JSON payload, какъвто Android SDK клиентът трябва да изпрати към MoniK.
 
+
+## Автоматичен Windows старт
+
+За да не натискаш стъпките една по една, добавен е PowerShell script:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start-monik-windows.ps1
+```
+
+Той автоматично:
+
+1. проверява `node -v` и `npm -v`;
+2. пуска `npm install`;
+3. пуска `npm run check`;
+4. пуска `npm run test:page`;
+5. отваря `http://localhost:4173`;
+6. стартира server-а с `npm start`.
+
+Ако repo-то вече е git clone и искаш script-ът да опита update преди старта:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start-monik-windows.ps1 -Update
+```
+
+Ако GitHub Desktop/Git показва local inconsistencies и **нямаш локални промени за пазене**, може да пуснеш автоматично чистене + update:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start-monik-windows.ps1 -Update -ResetLocalChanges
+```
+
+Внимание: `-ResetLocalChanges` изпълнява `git reset --hard` и `git clean -fd`, т.е. трие локални неприбрани промени.
+
 ## Windows ред
 
 ```powershell

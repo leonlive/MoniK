@@ -8,7 +8,8 @@
     "start": "node src/server.js",
     "dev": "node src/server.js",
     "check": "node --check src/server.js && node --check src/deviceStore.js && node --check src/tuyaClient.js && node --check public/app.js",
-    "test:page": "node scripts/smoke-test.js"
+    "test:page": "node scripts/smoke-test.js",
+    "start:windows": "powershell -ExecutionPolicy Bypass -File ./start-monik-windows.ps1"
   },
   "engines": {
     "node": ">=20"
