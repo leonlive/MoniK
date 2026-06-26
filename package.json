@@ -1,0 +1,22 @@
+{
+  "name": "monik-tuya-link",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Standalone MoniK server module for linking a Tuya account and importing devices.",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js",
+    "check": "node --check src/server.js && node --check src/tuyaClient.js && node --check public/app.js",
+    "test:page": "node scripts/smoke-test.js"
+  },
+  "dependencies": {
+    "@tuya/tuya-connector-nodejs": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "overrides": {
+    "axios": "^1.13.2"
+  }
+}
