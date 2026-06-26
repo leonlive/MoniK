@@ -17,8 +17,8 @@
         <p class="eyebrow">MoniK Server → Tuya SDK</p>
         <h1 id="page-title">Свържи реален Tuya акаунт</h1>
         <p class="intro">
-          Това не е демо табло. Формата изпраща реална заявка към <code>POST /api/tuya/link</code>.
-          При валидни Tuya project ключове MoniK прави login, взема UID и импортва устройствата от Tuya.
+          Това не е демо табло. Потребителят въвежда само съществуващ Tuya акаунт — не developer акаунт.
+          MoniK server държи connector настройките, прави login, взема UID и импортва устройствата от Tuya.
         </p>
 
         <div class="endpoint-box">
@@ -28,7 +28,7 @@
 
         <form id="tuyaLinkForm" class="link-form">
           <label>
-            <span>Tuya username / email / телефон</span>
+            <span>Tuya username / email / телефон — без developer акаунт</span>
             <input name="username" autocomplete="username" required placeholder="real-tuya-account@example.com" />
           </label>
 

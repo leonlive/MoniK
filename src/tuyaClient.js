@@ -18,20 +18,20 @@ export class TuyaLinkError extends Error {
 }
 
 export function requireTuyaConfig(env = process.env) {
-  const accessKey = env.TUYA_ACCESS_ID;
-  const secretKey = env.TUYA_ACCESS_SECRET;
+  const accessKey = env.MONIK_TUYA_ACCESS_ID || env.TUYA_ACCESS_ID;
+  const secretKey = env.MONIK_TUYA_ACCESS_SECRET || env.TUYA_ACCESS_SECRET;
   const dataCenter = env.TUYA_DATA_CENTER || 'eu';
   const baseUrl = env.TUYA_BASE_URL || DATA_CENTERS[dataCenter];
   const schema = env.TUYA_SCHEMA || 'tuyaSmart';
   const countryCode = env.TUYA_COUNTRY_CODE || '49';
 
   const missing = [];
-  if (!accessKey) missing.push('TUYA_ACCESS_ID');
-  if (!secretKey) missing.push('TUYA_ACCESS_SECRET');
+  if (!accessKey) missing.push('MONIK_TUYA_ACCESS_ID');
+  if (!secretKey) missing.push('MONIK_TUYA_ACCESS_SECRET');
   if (!baseUrl) missing.push('TUYA_BASE_URL or valid TUYA_DATA_CENTER');
 
   if (missing.length > 0) {
-    throw new TuyaLinkError('Missing Tuya cloud configuration.', { missing });
+    throw new TuyaLinkError('MoniK Tuya connector is not configured on the server.', { missing });
   }
 
   return { accessKey, secretKey, baseUrl, schema, countryCode };

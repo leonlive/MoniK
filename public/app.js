@@ -33,7 +33,7 @@ form.addEventListener('submit', async (event) => {
   const body = Object.fromEntries(formData.entries());
 
   submitButton.disabled = true;
-  showResult('MoniK server изпраща заявка към Tuya SDK. Моля изчакай...', '');
+  showResult('MoniK server прави login със съществуващия Tuya акаунт. Developer акаунт от потребителя не се иска.', '');
 
   try {
     const response = await fetch('/api/tuya/link', {

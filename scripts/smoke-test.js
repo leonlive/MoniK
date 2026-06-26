@@ -37,6 +37,7 @@ try {
   assert(page.status === 200, `Expected page status 200, got ${page.status}`);
   assert(html.includes('id="tuyaLinkForm"'), 'Expected Tuya link form on the test page.');
   assert(html.includes('Логин и импорт на устройства'), 'Expected real login/import submit button.');
+  assert(html.includes('без developer акаунт'), 'Expected no-developer-account wording on the page.');
   assert(html.includes('value="49"'), 'Expected international country code 49 option.');
   assert(html.includes('value="359"'), 'Expected Bulgaria country code 359 option.');
 
