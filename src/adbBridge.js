@@ -78,3 +78,26 @@ export async function readMonikTuyaExport({ packageName = DEFAULT_PACKAGE, devic
     });
   }
 }
+
+export async function clearAdbLogcat() {
+  await adb(['logcat', '-c']);
+  return { cleared: true };
+}
+
+export async function readAdbLogcat({ lines = 600, filter = '' } = {}) {
+  const safeLines = String(Math.max(50, Math.min(Number(lines) || 600, 5000)));
+  const output = await adb(['logcat', '-d', '-t', safeLines]);
+  const normalizedFilter = String(filter || '').trim().toLowerCase();
+  const text = normalizedFilter
+    ? output
+        .split('\n')
+        .filter((line) => line.toLowerCase().includes(normalizedFilter))
+        .join('\n')
+    : output;
+
+  return {
+    filter: normalizedFilter || null,
+    lines: Number(safeLines),
+    text,
+  };
+}

@@ -6,6 +6,8 @@ const adbStatusBox = document.querySelector('#adbStatusBox');
 const packageNameInput = document.querySelector('#packageName');
 const deviceFileInput = document.querySelector('#deviceFile');
 const clearResultButton = document.querySelector('#clearResult');
+const clearLogcatButton = document.querySelector('#clearLogcat');
+const readLogcatButton = document.querySelector('#readLogcat');
 
 function showResult(payload, state = '') {
   resultBox.className = state;
@@ -91,6 +93,32 @@ jsonForm.addEventListener('submit', async (event) => {
     showResult({ imported: false, error: error.message }, 'is-error');
   } finally {
     submitButton.disabled = false;
+  }
+});
+
+
+clearLogcatButton.addEventListener('click', async () => {
+  showResult('Изчистване на ADB logcat...', '');
+
+  try {
+    const response = await fetch('/api/monik/adb/logcat/clear', { method: 'POST' });
+    const payload = await response.json();
+    showResult(payload, response.ok ? 'is-success' : 'is-error');
+  } catch (error) {
+    showResult({ cleared: false, error: error.message }, 'is-error');
+  }
+});
+
+readLogcatButton.addEventListener('click', async () => {
+  showResult('Четене на ADB logcat...', '');
+
+  try {
+    const filter = encodeURIComponent('tuya smartlife thing kt login error success false schema country client account home device bridge native method');
+    const response = await fetch(`/api/monik/adb/logcat?lines=1200&filter=${filter}`);
+    const payload = await response.json();
+    showResult(payload, response.ok ? 'is-success' : 'is-error');
+  } catch (error) {
+    showResult({ logcat: false, error: error.message }, 'is-error');
   }
 });
 

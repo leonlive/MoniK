@@ -23,6 +23,27 @@ GET /api/monik/devices
 
 
 
+
+## Хибриден тест през компютър + телефон
+
+Това е най-бързият тест за login проблема:
+
+1. Свържи телефона с USB.
+2. Разреши USB debugging.
+3. Стартирай MoniK server: `npm start`.
+4. В browser отвори `http://localhost:4173`.
+5. Натисни **Изчисти logcat**.
+6. На телефона натисни MoniK login/import бутона.
+7. В browser натисни **Прочети login log**.
+
+Същото може и директно от PowerShell:
+
+```powershell
+npm run log:windows
+```
+
+Script-ът прави `adb devices`, `adb logcat -c`, чака да натиснеш login на телефона, после записва `monik-login.log` и филтрира важните редове.
+
 ## MoniK server token request с key файлове
 
 Да: ако тези файлове са достъпът до MoniK server-а, `.env` трябва да сочи имената/пътищата им, а програмата трябва да ги прочете при заявката. Добавен е endpoint:

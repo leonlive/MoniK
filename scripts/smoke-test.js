@@ -47,6 +47,9 @@ try {
   });
   assert(tokenMissingConfigResponse.status === 400, `Expected token missing config status 400, got ${tokenMissingConfigResponse.status}`);
 
+  const logcatResponse = await fetch(`${baseUrl}/api/monik/adb/logcat?lines=50&filter=tuya`);
+  assert([200, 400].includes(logcatResponse.status), `Expected logcat status 200 or 400, got ${logcatResponse.status}`);
+
   const adbStatusResponse = await fetch(`${baseUrl}/api/monik/adb/status`);
   const adbStatusPayload = await adbStatusResponse.json();
   assert(adbStatusResponse.status === 200, `Expected ADB status 200, got ${adbStatusResponse.status}`);

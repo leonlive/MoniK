@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { AdbBridgeError, getAdbStatus, readMonikTuyaExport } from './adbBridge.js';
+import { AdbBridgeError, clearAdbLogcat, getAdbStatus, readAdbLogcat, readMonikTuyaExport } from './adbBridge.js';
 import { MonikTokenError, requestMonikToken } from './monikTokenClient.js';
 import { DeviceImportError, getImportedDevices, importDevicesFromSdk } from './deviceStore.js';
 
@@ -75,6 +75,38 @@ async function handleDeviceImport(request, response) {
 
 
 
+
+async function handleLogcatRead(request, response) {
+  try {
+    const url = new URL(request.url, `http://${request.headers.host}`);
+    const result = await readAdbLogcat({
+      filter: url.searchParams.get('filter') || '',
+      lines: url.searchParams.get('lines') || 600,
+    });
+    sendJson(response, 200, result);
+  } catch (error) {
+    const statusCode = error instanceof AdbBridgeError ? 400 : 500;
+    sendJson(response, statusCode, {
+      logcat: false,
+      error: error.message,
+      details: error.details,
+    });
+  }
+}
+
+async function handleLogcatClear(response) {
+  try {
+    sendJson(response, 200, await clearAdbLogcat());
+  } catch (error) {
+    const statusCode = error instanceof AdbBridgeError ? 400 : 500;
+    sendJson(response, statusCode, {
+      cleared: false,
+      error: error.message,
+      details: error.details,
+    });
+  }
+}
+
 async function handleTokenRequest(request, response) {
   try {
     const payload = await readJsonBody(request);
@@ -122,6 +154,16 @@ async function route(request, response) {
 
   if (request.method === 'POST' && url.pathname === '/api/monik/token/request') {
     await handleTokenRequest(request, response);
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/monik/adb/logcat/clear') {
+    await handleLogcatClear(response);
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/monik/adb/logcat') {
+    await handleLogcatRead(request, response);
     return;
   }
 
