@@ -40,6 +40,13 @@ try {
   assert(html.includes('Tuya SDK login'), 'Expected explanation that login is in the MoniK app.');
   assert(html.includes('Взимане от телефона с ADB'), 'Expected ADB phone bridge section.');
 
+  const tokenMissingConfigResponse = await fetch(`${baseUrl}/api/monik/token/request`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ account: 'user@example.com' }),
+  });
+  assert(tokenMissingConfigResponse.status === 400, `Expected token missing config status 400, got ${tokenMissingConfigResponse.status}`);
+
   const adbStatusResponse = await fetch(`${baseUrl}/api/monik/adb/status`);
   const adbStatusPayload = await adbStatusResponse.json();
   assert(adbStatusResponse.status === 200, `Expected ADB status 200, got ${adbStatusResponse.status}`);

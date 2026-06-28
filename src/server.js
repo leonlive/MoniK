@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AdbBridgeError, getAdbStatus, readMonikTuyaExport } from './adbBridge.js';
+import { MonikTokenError, requestMonikToken } from './monikTokenClient.js';
 import { DeviceImportError, getImportedDevices, importDevicesFromSdk } from './deviceStore.js';
 
 const PORT = Number(process.env.PORT || 4173);
@@ -73,6 +74,22 @@ async function handleDeviceImport(request, response) {
 }
 
 
+
+async function handleTokenRequest(request, response) {
+  try {
+    const payload = await readJsonBody(request);
+    const result = await requestMonikToken(payload);
+    sendJson(response, result.sent && result.ok === false ? 502 : 200, result);
+  } catch (error) {
+    const statusCode = error instanceof MonikTokenError ? 400 : 500;
+    sendJson(response, statusCode, {
+      tokenRequested: false,
+      error: error.message,
+      details: error.details,
+    });
+  }
+}
+
 async function handleAdbImport(request, response) {
   try {
     const options = await readJsonBody(request);
@@ -100,6 +117,11 @@ async function route(request, response) {
 
   if (request.method === 'GET' && url.pathname === '/health') {
     sendJson(response, 200, { ok: true, mode: 'monik-adb-sdk-bridge' });
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/monik/token/request') {
+    await handleTokenRequest(request, response);
     return;
   }
 

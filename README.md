@@ -22,6 +22,26 @@ GET /api/monik/devices
 
 
 
+
+## MoniK server token request с key файлове
+
+Да: ако тези файлове са достъпът до MoniK server-а, `.env` трябва да сочи имената/пътищата им, а програмата трябва да ги прочете при заявката. Добавен е endpoint:
+
+```http
+POST /api/monik/token/request
+```
+
+Конфигурация:
+
+```bash
+MONIK_SERVER_TOKEN_URL=https://your-monik-server.example/api/token
+MONIK_TUYA_ACCESS_ID=monik_strato_ed25519
+MONIK_TUYA_PRIVATE_KEY_PATH=/opt/monik-yandex/secure/keys/monik_strato_ed25519
+MONIK_TUYA_PUBLIC_KEY_PATH=/opt/monik-yandex/secure/keys/monik_strato_ed25519.pub
+```
+
+Важно: `.env` пази само имена/пътища. Самите ключове не се commit-ват. При заявка server-ът чете private/public key файловете, подписва payload-а и го изпраща към `MONIK_SERVER_TOKEN_URL`. Ако `MONIK_SERVER_TOKEN_URL` не е зададен, endpoint-ът връща signed request обекта без да го изпраща.
+
 ## Как е вързано с телефона?
 
 Не чрез pairing и не като отделено приложение. Този Node server вече работи като ADB bridge към инсталирания MoniK app на телефона.
