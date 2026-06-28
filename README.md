@@ -21,6 +21,35 @@ GET /api/monik/devices
 ```
 
 
+
+## Как е вързано с телефона?
+
+Тази част вече не виси във въздуха: MoniK server показва LAN endpoint и pairing code, които Android приложението трябва да използва.
+
+1. Стартираш server-а на компютъра: `npm start`.
+2. Отваряш `http://localhost:4173`.
+3. Страницата показва:
+   - LAN адреси от типа `http://192.168.x.x:4173/api/monik/devices/import`;
+   - 6-цифрен pairing code.
+4. Телефонът трябва да е на същия Wi‑Fi като компютъра.
+5. В MoniK Android app задаваш LAN endpoint-а и pairing code-а.
+6. Android app, след Tuya SDK login, праща devices към MoniK server с header:
+
+```http
+x-monik-pairing-code: 123456
+```
+
+или с поле в JSON:
+
+```json
+{
+  "pairingCode": "123456",
+  "devices": []
+}
+```
+
+Ако кодът липсва или е грешен, server-ът връща `401`.
+
 ## Къде се въвеждат email и парола?
 
 Не в тази browser страница. Email/парола трябва да се въвеждат в MoniK Android/iOS приложението, където е Tuya mobile SDK и manifest setup-ът.

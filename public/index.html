@@ -30,12 +30,21 @@
           </ol>
         </div>
 
+        <div class="pairing-panel">
+          <h2>Връзка с телефона</h2>
+          <div id="pairingBox">Зареждане на LAN адрес и код...</div>
+        </div>
+
         <div class="endpoint-box">
           <span>Endpoint за SDK клиента:</span>
           <code>POST /api/monik/devices/import</code>
         </div>
 
         <form id="deviceImportForm" class="link-form">
+          <label>
+            <span>Код за връзка от MoniK server</span>
+            <input id="pairingCode" name="pairingCode" required />
+          </label>
           <label>
             <span>JSON от Tuya mobile SDK клиента</span>
             <textarea name="devicesJson" required placeholder='{"devices":[{"devId":"real-device-id","name":"Lamp","online":true}]}'></textarea>

@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { networkInterfaces } from 'node:os';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -6,6 +7,7 @@ import { DeviceImportError, getImportedDevices, importDevicesFromSdk } from './d
 
 const PORT = Number(process.env.PORT || 4173);
 const PUBLIC_DIR = fileURLToPath(new URL('../public/', import.meta.url));
+const PAIRING_CODE = String(Math.floor(100000 + Math.random() * 900000));
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -13,6 +15,35 @@ const MIME_TYPES = {
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
 };
+
+
+function getLanUrls(request) {
+  const hostHeader = request.headers.host || `localhost:${PORT}`;
+  const port = hostHeader.split(':')[1] || String(PORT);
+  const urls = [`http://localhost:${port}`];
+
+  for (const addresses of Object.values(networkInterfaces())) {
+    for (const address of addresses || []) {
+      if (address.family === 'IPv4' && !address.internal) {
+        urls.push(`http://${address.address}:${port}`);
+      }
+    }
+  }
+
+  return [...new Set(urls)];
+}
+
+function getPairingInfo(request) {
+  const baseUrls = getLanUrls(request);
+
+  return {
+    pairingCode: PAIRING_CODE,
+    baseUrls,
+    importEndpoints: baseUrls.map((baseUrl) => `${baseUrl}/api/monik/devices/import`),
+    devicesEndpoints: baseUrls.map((baseUrl) => `${baseUrl}/api/monik/devices`),
+    instructions: 'Phone must be on the same Wi-Fi/LAN. Send devices to the import endpoint with x-monik-pairing-code header or pairingCode in JSON body.',
+  };
+}
 
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, { 'content-type': MIME_TYPES['.json'] });
@@ -54,6 +85,16 @@ async function serveStatic(request, response) {
 async function handleDeviceImport(request, response) {
   try {
     const payload = await readJsonBody(request);
+    const receivedCode = request.headers['x-monik-pairing-code'] || payload.pairingCode;
+
+    if (receivedCode !== PAIRING_CODE) {
+      sendJson(response, 401, {
+        imported: false,
+        error: 'Invalid or missing MoniK pairing code.',
+      });
+      return;
+    }
+
     const result = importDevicesFromSdk(payload);
 
     sendJson(response, 200, {
@@ -74,7 +115,12 @@ async function route(request, response) {
   const url = new URL(request.url, `http://${request.headers.host}`);
 
   if (request.method === 'GET' && url.pathname === '/health') {
-    sendJson(response, 200, { ok: true, mode: 'tuya-mobile-sdk-bridge' });
+    sendJson(response, 200, { ok: true, mode: 'tuya-mobile-sdk-bridge', pairingCode: PAIRING_CODE });
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/monik/pairing') {
+    sendJson(response, 200, getPairingInfo(request));
     return;
   }
 

@@ -94,6 +94,19 @@ h2 { margin-bottom: 0; }
   line-height: 1.7;
 }
 
+.pairing-panel {
+  margin: 22px 0;
+  border: 1px solid #bfdbfe;
+  border-radius: 18px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  padding: 16px 18px;
+}
+
+.pairing-panel h2 { margin-bottom: 10px; }
+.pairing-panel ul { margin: 10px 0 0; padding-left: 20px; }
+.pairing-panel li { margin: 8px 0; }
+
 .flow-box {
   margin: 22px 0;
   border: 1px solid #bbf7d0;
