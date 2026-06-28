@@ -35,26 +35,19 @@ try {
   const page = await fetch(baseUrl);
   const html = await page.text();
   assert(page.status === 200, `Expected page status 200, got ${page.status}`);
-  assert(html.includes('id="deviceImportForm"'), 'Expected SDK device import form on the test page.');
-  assert(html.includes('Без Tuya developer cloud keys'), 'Expected no-developer-cloud-key wording.');
-  assert(html.includes('Тук няма поле за email и парола'), 'Expected explanation that login is in the MoniK app.');
-  assert(html.includes('Връзка с телефона'), 'Expected phone pairing section.');
+  assert(html.includes('id="adbImportForm"'), 'Expected ADB import form on the test page.');
+  assert(html.includes('Вътре в MoniK app'), 'Expected integrated MoniK app wording.');
+  assert(html.includes('Tuya SDK login'), 'Expected explanation that login is in the MoniK app.');
+  assert(html.includes('Взимане от телефона с ADB'), 'Expected ADB phone bridge section.');
 
-  const pairingResponse = await fetch(`${baseUrl}/api/monik/pairing`);
-  const pairingPayload = await pairingResponse.json();
-  assert(pairingResponse.status === 200, `Expected pairing status 200, got ${pairingResponse.status}`);
-  assert(pairingPayload.pairingCode, 'Expected pairing code.');
-
-  const unauthorizedResponse = await fetch(`${baseUrl}/api/monik/devices/import`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ devices: [{ devId: 'real-device-id', name: 'Lamp', online: true }] }),
-  });
-  assert(unauthorizedResponse.status === 401, `Expected missing pairing code status 401, got ${unauthorizedResponse.status}`);
+  const adbStatusResponse = await fetch(`${baseUrl}/api/monik/adb/status`);
+  const adbStatusPayload = await adbStatusResponse.json();
+  assert(adbStatusResponse.status === 200, `Expected ADB status 200, got ${adbStatusResponse.status}`);
+  assert('adbAvailable' in adbStatusPayload, 'Expected adbAvailable field.');
 
   const importResponse = await fetch(`${baseUrl}/api/monik/devices/import`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-monik-pairing-code': pairingPayload.pairingCode },
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ devices: [{ devId: 'real-device-id', name: 'Lamp', online: true }] }),
   });
   const importPayload = await importResponse.json();

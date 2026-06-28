@@ -94,7 +94,7 @@ h2 { margin-bottom: 0; }
   line-height: 1.7;
 }
 
-.pairing-panel {
+.adb-panel {
   margin: 22px 0;
   border: 1px solid #bfdbfe;
   border-radius: 18px;
@@ -103,9 +103,9 @@ h2 { margin-bottom: 0; }
   padding: 16px 18px;
 }
 
-.pairing-panel h2 { margin-bottom: 10px; }
-.pairing-panel ul { margin: 10px 0 0; padding-left: 20px; }
-.pairing-panel li { margin: 8px 0; }
+.adb-panel h2 { margin-bottom: 10px; }
+.adb-panel ul { margin: 10px 0 0; padding-left: 20px; }
+.adb-panel li { margin: 8px 0; }
 
 .flow-box {
   margin: 22px 0;
@@ -189,6 +189,18 @@ button:disabled { cursor: wait; opacity: 0.72; }
 }
 
 .secondary-button:hover { background: #cbd5e1; }
+
+details {
+  margin-top: 18px;
+  border: 1px solid #e4e7ec;
+  border-radius: 18px;
+  padding: 16px;
+}
+
+summary {
+  cursor: pointer;
+  font-weight: 900;
+}
 
 .result {
   margin-top: 28px;

@@ -3,62 +3,68 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>MoniK · Tuya SDK bridge</title>
+    <title>MoniK · ADB SDK bridge</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="page-shell">
       <section class="test-panel" aria-labelledby="page-title">
         <div class="status-strip">
-          <strong>MoniK server-side bridge</strong>
+          <strong>MoniK ADB bridge</strong>
           <span id="serverStatus">Проверка на MoniK server...</span>
         </div>
 
-        <p class="eyebrow">Без Tuya developer cloud keys</p>
-        <h1 id="page-title">Импорт от Tuya mobile SDK</h1>
+        <p class="eyebrow">Вътре в MoniK app · без pairing</p>
+        <h1 id="page-title">Взимане от телефона с ADB</h1>
         <p class="intro">
-          Тук няма поле за email и парола, защото login-ът се прави в MoniK Android/iOS приложението чрез Tuya mobile SDK.
-          Този server само приема устройствата, които приложението вече е взело от съществуващия Tuya user акаунт.
+          Това вече не е отделно “връзване”. MoniK Android app прави Tuya login-а и записва export JSON.
+          Този server взима export-а от инсталираното приложение през ADB и го импортва в MoniK.
         </p>
 
         <div class="flow-box">
           <strong>Правилен ред:</strong>
           <ol>
-            <li>MoniK app показва Tuya login екран за email/парола.</li>
-            <li>Tuya mobile SDK връща homes/devices в приложението.</li>
-            <li>Приложението праща devices към този MoniK server.</li>
+            <li>Телефонът е вързан с USB и USB debugging е разрешен.</li>
+            <li>MoniK app вече е инсталиран и е направил Tuya SDK login.</li>
+            <li>MoniK app записва devices export JSON в app storage.</li>
+            <li>Този server чете файла през <code>adb shell run-as</code> и импортва devices.</li>
           </ol>
         </div>
 
-        <div class="pairing-panel">
-          <h2>Връзка с телефона</h2>
-          <div id="pairingBox">Зареждане на LAN адрес и код...</div>
+        <div class="adb-panel">
+          <h2>ADB статус</h2>
+          <div id="adbStatusBox">Проверка на ADB...</div>
         </div>
 
-        <div class="endpoint-box">
-          <span>Endpoint за SDK клиента:</span>
-          <code>POST /api/monik/devices/import</code>
-        </div>
-
-        <form id="deviceImportForm" class="link-form">
+        <form id="adbImportForm" class="link-form">
           <label>
-            <span>Код за връзка от MoniK server</span>
-            <input id="pairingCode" name="pairingCode" required />
+            <span>Android package на MoniK app</span>
+            <input id="packageName" name="packageName" required />
           </label>
           <label>
-            <span>JSON от Tuya mobile SDK клиента</span>
-            <textarea name="devicesJson" required placeholder='{"devices":[{"devId":"real-device-id","name":"Lamp","online":true}]}'></textarea>
+            <span>Export файл вътре в app storage</span>
+            <input id="deviceFile" name="deviceFile" required />
           </label>
-
-          <button type="submit">Импорт в MoniK server</button>
+          <button type="submit">Вземи devices от телефона през ADB</button>
         </form>
+
+        <details>
+          <summary>Ръчен тест с JSON, ако ADB още не е готов</summary>
+          <form id="deviceImportForm" class="link-form">
+            <label>
+              <span>JSON от MoniK Android/Tuya SDK export</span>
+              <textarea name="devicesJson" required placeholder='{"devices":[{"devId":"real-device-id","name":"Lamp","online":true}]}'></textarea>
+            </label>
+            <button type="submit">Импорт JSON в MoniK server</button>
+          </form>
+        </details>
 
         <section class="result" aria-live="polite">
           <div class="result-header">
             <h2>Отговор от MoniK server</h2>
             <button id="clearResult" class="secondary-button" type="button">Изчисти</button>
           </div>
-          <pre id="resultBox">Готово за реален SDK import. Няма developer credentials в този server.</pre>
+          <pre id="resultBox">Готово за ADB import от телефона.</pre>
         </section>
       </section>
     </main>

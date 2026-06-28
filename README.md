@@ -24,31 +24,47 @@ GET /api/monik/devices
 
 ## Как е вързано с телефона?
 
-Тази част вече не виси във въздуха: MoniK server показва LAN endpoint и pairing code, които Android приложението трябва да използва.
+Не чрез pairing и не като отделено приложение. Този Node server вече работи като ADB bridge към инсталирания MoniK app на телефона.
 
-1. Стартираш server-а на компютъра: `npm start`.
-2. Отваряш `http://localhost:4173`.
-3. Страницата показва:
-   - LAN адреси от типа `http://192.168.x.x:4173/api/monik/devices/import`;
-   - 6-цифрен pairing code.
-4. Телефонът трябва да е на същия Wi‑Fi като компютъра.
-5. В MoniK Android app задаваш LAN endpoint-а и pairing code-а.
-6. Android app, след Tuya SDK login, праща devices към MoniK server с header:
+1. Телефонът е вързан с USB към компютъра.
+2. USB debugging е разрешен.
+3. MoniK Android app е инсталиран и прави Tuya SDK login вътре в приложението.
+4. MoniK app записва devices export JSON в app storage, например `files/monik_tuya_devices.json`.
+5. Node server изпълнява:
 
-```http
-x-monik-pairing-code: 123456
+```bash
+adb shell run-as com.monik.app cat files/monik_tuya_devices.json
 ```
 
-или с поле в JSON:
+6. Прочетеният JSON се импортва в MoniK server.
+
+Endpoint за автоматично ADB взимане:
+
+```http
+POST /api/monik/adb/import
+```
+
+Body:
 
 ```json
 {
-  "pairingCode": "123456",
-  "devices": []
+  "packageName": "com.monik.app",
+  "deviceFile": "files/monik_tuya_devices.json"
 }
 ```
 
-Ако кодът липсва или е грешен, server-ът връща `401`.
+ADB статус:
+
+```http
+GET /api/monik/adb/status
+```
+
+Конфигурация през env, ако package/file са различни:
+
+```bash
+MONIK_ANDROID_PACKAGE=com.monik.app
+MONIK_TUYA_EXPORT_FILE=files/monik_tuya_devices.json
+```
 
 ## Къде се въвеждат email и парола?
 
