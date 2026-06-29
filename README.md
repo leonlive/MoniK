@@ -25,6 +25,28 @@ GET /api/monik/devices
 
 
 
+
+## Две MoniK Android папки
+
+До пълното изчистване на app-а приемаме тези две папки:
+
+- оригинал: `C:\Users\Public\MoniK\smart-home-monik`
+- последна SDK 7.5+ update версия: `C:\Users\Public\MoniK\smart-home-monik_sdk75+e`
+
+За тестове и backup по подразбиране ползваме **последната update версия** `smart-home-monik_sdk75+e`. Оригиналът се пази като reference/backup.
+
+Backup команда за двете папки:
+
+```powershell
+npm run backup:android
+```
+
+Ако искаш ръчно да посочиш пътищата:
+
+```powershell
+npm run backup:android -- -ProjectRoot "C:\Users\Public\MoniK\smart-home-monik_sdk75+e" -OriginalProjectRoot "C:\Users\Public\MoniK\smart-home-monik"
+```
+
 ## ADB път, когато SDK е в друг проект/папка
 
 Може. Не е нужно да си в Android проекта, важното е `adb.exe` да е в PATH или да зададем `ADB_PATH`. За твоята структура използвай:
@@ -65,7 +87,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\collect-login-log-windows.ps1
 Ако искаш backup преди всеки тест на Android проекта:
 
 ```powershell
-npm run backup:android -- -ProjectRoot "C:\Users\Public\MoniK\smart-home-monik"
+npm run backup:android -- -ProjectRoot "C:\Users\Public\MoniK\smart-home-monik_sdk75+e" -OriginalProjectRoot "C:\Users\Public\MoniK\smart-home-monik"
 ```
 
 ## Хибриден тест през компютър + телефон
