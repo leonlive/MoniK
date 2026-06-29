@@ -1,6 +1,8 @@
 param(
   [switch]$Update,
-  [switch]$ResetLocalChanges
+  [switch]$ResetLocalChanges,
+  [string]$AndroidRoot = 'C:\Users\Public',
+  [string]$AdbPath = ''
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,8 +15,18 @@ function Run($command, $arguments = @()) {
   }
 }
 
+if (-not $AdbPath) {
+  $AdbPath = Join-Path $AndroidRoot 'platform-tools\adb.exe'
+}
+
+$env:ANDROID_HOME = $AndroidRoot
+$env:ANDROID_SDK_ROOT = $AndroidRoot
+$env:ADB_PATH = $AdbPath
+$env:PATH = "$(Join-Path $AndroidRoot 'platform-tools');$(Join-Path $AndroidRoot 'emulator');$(Join-Path $AndroidRoot 'cmdline-tools\latest\bin');$env:PATH"
+
 Write-Host "MoniK automatic Windows starter" -ForegroundColor Green
 Write-Host "Folder: $PWD"
+Write-Host "ADB path: $AdbPath"
 
 Run "node" @("-v")
 Run "npm" @("-v")

@@ -10,7 +10,8 @@
     "check": "node --check src/server.js && node --check src/deviceStore.js && node --check src/tuyaClient.js && node --check src/adbBridge.js && node --check src/monikTokenClient.js && node --check public/app.js",
     "test:page": "node scripts/smoke-test.js",
     "start:windows": "powershell -ExecutionPolicy Bypass -File ./start-monik-windows.ps1",
-    "log:windows": "powershell -ExecutionPolicy Bypass -File ./scripts/collect-login-log-windows.ps1"
+    "log:windows": "powershell -ExecutionPolicy Bypass -File ./scripts/collect-login-log-windows.ps1",
+    "backup:android": "powershell -ExecutionPolicy Bypass -File ./scripts/backup-android-files-windows.ps1"
   },
   "engines": {
     "node": ">=20"

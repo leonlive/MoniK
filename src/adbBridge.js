@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
+const ADB_COMMAND = process.env.ADB_PATH || 'adb';
 const DEFAULT_PACKAGE = process.env.MONIK_ANDROID_PACKAGE || 'com.monik.app';
 const DEFAULT_DEVICE_FILE = process.env.MONIK_TUYA_EXPORT_FILE || 'files/monik_tuya_devices.json';
 
@@ -15,11 +16,11 @@ export class AdbBridgeError extends Error {
 
 async function adb(args) {
   try {
-    const { stdout } = await execFileAsync('adb', args, { windowsHide: true, timeout: 15000 });
+    const { stdout } = await execFileAsync(ADB_COMMAND, args, { windowsHide: true, timeout: 15000 });
     return stdout.trim();
   } catch (error) {
     throw new AdbBridgeError('ADB command failed.', {
-      command: `adb ${args.join(' ')}`,
+      command: `${ADB_COMMAND} ${args.join(' ')}`,
       message: error.message,
       stderr: error.stderr,
     });
@@ -41,6 +42,7 @@ export async function getAdbStatus() {
 
     return {
       adbAvailable: true,
+      adbCommand: ADB_COMMAND,
       defaultPackage: DEFAULT_PACKAGE,
       defaultDeviceFile: DEFAULT_DEVICE_FILE,
       devices,
@@ -48,6 +50,7 @@ export async function getAdbStatus() {
   } catch (error) {
     return {
       adbAvailable: false,
+      adbCommand: ADB_COMMAND,
       defaultPackage: DEFAULT_PACKAGE,
       defaultDeviceFile: DEFAULT_DEVICE_FILE,
       error: error.message,

@@ -24,6 +24,50 @@ GET /api/monik/devices
 
 
 
+
+## ADB път, когато SDK е в друг проект/папка
+
+Може. Не е нужно да си в Android проекта, важното е `adb.exe` да е в PATH или да зададем `ADB_PATH`. За твоята структура използвай:
+
+```powershell
+set "ANDROID_HOME=C:\Users\Public"
+set "ANDROID_SDK_ROOT=C:\Users\Public"
+set "ADB_PATH=C:\Users\Public\platform-tools\adb.exe"
+set "PATH=C:\Users\Public\platform-tools;C:\Users\Public\emulator;C:\Users\Public\cmdline-tools\latest\bin;%PATH%"
+```
+
+После от папката на този server:
+
+```powershell
+cd /d C:\Users\Public\github\leonlive-MoniK\MoniK
+npm start
+```
+
+За log тест с готовия script:
+
+```powershell
+npm run log:windows -- -AndroidRoot "C:\Users\Public"
+```
+
+или директно:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\collect-login-log-windows.ps1 -AndroidRoot "C:\Users\Public"
+```
+
+Текущите ADB тестове не променят `App.tsx` или Kotlin/Java файлове. Те правят само:
+
+- `adb devices` — чете devices;
+- `adb logcat -c` — чисти Android log buffer;
+- `adb logcat -d` — чете log;
+- `adb shell run-as ... cat ...` — чете export файл от app storage.
+
+Ако искаш backup преди всеки тест на Android проекта:
+
+```powershell
+npm run backup:android -- -ProjectRoot "C:\Users\Public\MoniK\smart-home-monik"
+```
+
 ## Хибриден тест през компютър + телефон
 
 Това е най-бързият тест за login проблема:
