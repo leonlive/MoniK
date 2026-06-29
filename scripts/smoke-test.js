@@ -40,6 +40,57 @@ try {
   assert(html.includes('Tuya SDK login'), 'Expected explanation that login is in the MoniK app.');
   assert(html.includes('Взимане от телефона с ADB'), 'Expected ADB phone bridge section.');
 
+  const wellKnownResponse = await fetch(`${baseUrl}/.well-known/oauth-authorization-server`);
+  const wellKnownPayload = await wellKnownResponse.json();
+  assert(wellKnownResponse.status === 200, `Expected OAuth metadata 200, got ${wellKnownResponse.status}`);
+  assert(wellKnownPayload.authorization_endpoint, 'Expected OAuth authorization endpoint.');
+
+  const devRedirectUri = 'http://localhost:4173/oauth/callback/dev';
+  const authorizePage = await fetch(`${baseUrl}/oauth/authorize?response_type=code&client_id=alice-dev-client&redirect_uri=${encodeURIComponent(devRedirectUri)}&state=smoke`);
+  const authorizeHtml = await authorizePage.text();
+  assert(authorizePage.status === 200, `Expected authorize page 200, got ${authorizePage.status}`);
+  assert(authorizeHtml.includes('MoniK account linking'), 'Expected OAuth link page.');
+
+  const authorizeSubmit = await fetch(`${baseUrl}/oauth/authorize`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      account: 'user@example.com',
+      client_id: 'alice-dev-client',
+      password: 'secret',
+      redirect_uri: devRedirectUri,
+      response_type: 'code',
+      state: 'smoke',
+    }),
+  });
+  assert(authorizeSubmit.status === 302, `Expected authorize redirect 302, got ${authorizeSubmit.status}`);
+  const redirectLocation = authorizeSubmit.headers.get('location');
+  const code = new URL(redirectLocation).searchParams.get('code');
+  assert(code, 'Expected authorization code.');
+
+  const tokenResponse = await fetch(`${baseUrl}/oauth/token`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: 'alice-dev-client',
+      client_secret: 'alice-dev-secret',
+      code,
+      grant_type: 'authorization_code',
+      redirect_uri: devRedirectUri,
+    }),
+  });
+  const tokenPayload = await tokenResponse.json();
+  assert(tokenResponse.status === 200, `Expected token response 200, got ${tokenResponse.status}`);
+  assert(tokenPayload.access_token, 'Expected access token.');
+
+  const accountResponse = await fetch(`${baseUrl}/api/monik/account`, {
+    headers: { authorization: `Bearer ${tokenPayload.access_token}` },
+  });
+  const accountPayload = await accountResponse.json();
+  assert(accountResponse.status === 200, `Expected account response 200, got ${accountResponse.status}`);
+  assert(accountPayload.account === 'user@example.com', `Expected linked account, got ${accountPayload.account}`);
+
   const tokenMissingConfigResponse = await fetch(`${baseUrl}/api/monik/token/request`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

@@ -47,6 +47,37 @@ npm run backup:android
 npm run backup:android -- -ProjectRoot "C:\Users\Public\MoniK\smart-home-monik_sdk75+e" -OriginalProjectRoot "C:\Users\Public\MoniK\smart-home-monik"
 ```
 
+
+## Account linking като Алиса/Yandex/Alexa
+
+Добавен е OAuth2 authorization-code skeleton за production посоката, вместо ADB да е основният flow.
+
+Endpoints:
+
+```http
+GET /.well-known/oauth-authorization-server
+GET /oauth/authorize
+POST /oauth/authorize
+POST /oauth/token
+GET /api/monik/account
+```
+
+Dev config:
+
+```bash
+MONIK_OAUTH_CLIENT_ID=alice-dev-client
+MONIK_OAUTH_CLIENT_SECRET=alice-dev-secret
+MONIK_OAUTH_REDIRECT_URI=http://localhost:4173/oauth/callback/dev
+```
+
+Примерен authorize URL:
+
+```text
+http://localhost:4173/oauth/authorize?response_type=code&client_id=alice-dev-client&redirect_uri=http%3A%2F%2Flocalhost%3A4173%2Foauth%2Fcallback%2Fdev&state=test
+```
+
+Това е базата за account-linking flow: authorize → code → token → Bearer access token. ADB остава само debug/log/import helper.
+
 ## ADB път, когато SDK е в друг проект/папка
 
 Може. Не е нужно да си в Android проекта, важното е `adb.exe` да е в PATH или да зададем `ADB_PATH`. За твоята структура използвай:
