@@ -13,6 +13,7 @@ import {
   refreshAccessToken,
 } from './oauthStore.js';
 import { DeviceImportError, getImportedDevices, importDevicesFromSdk } from './deviceStore.js';
+import { WebScannerError, runReadOnlyWebScan } from './webScanner.js';
 
 const PORT = Number(process.env.PORT || 4173);
 const PUBLIC_DIR = fileURLToPath(new URL('../public/', import.meta.url));
@@ -237,6 +238,22 @@ function handleOAuthAccount(request, response) {
   }
 }
 
+
+async function handleWebScan(request, response) {
+  try {
+    const options = request.method === 'POST' ? await readJsonBody(request) : {};
+    sendJson(response, 200, await runReadOnlyWebScan(options));
+  } catch (error) {
+    const statusCode = error instanceof WebScannerError ? error.statusCode : 500;
+    sendJson(response, statusCode, {
+      readOnly: true,
+      writesPerformed: false,
+      error: error.message,
+      details: error.details,
+    });
+  }
+}
+
 async function handleTokenRequest(request, response) {
   try {
     const payload = await readJsonBody(request);
@@ -305,6 +322,11 @@ async function route(request, response) {
 
   if (request.method === 'GET' && url.pathname === '/api/monik/account') {
     handleOAuthAccount(request, response);
+    return;
+  }
+
+  if ((request.method === 'GET' || request.method === 'POST') && url.pathname === '/api/monik/web-scan') {
+    await handleWebScan(request, response);
     return;
   }
 

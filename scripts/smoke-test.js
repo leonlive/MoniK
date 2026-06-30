@@ -91,6 +91,18 @@ try {
   assert(accountResponse.status === 200, `Expected account response 200, got ${accountResponse.status}`);
   assert(accountPayload.account === 'user@example.com', `Expected linked account, got ${accountPayload.account}`);
 
+
+  const webScanResponse = await fetch(`${baseUrl}/api/monik/web-scan`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ scan: { limit: 2, timeoutMs: 25, concurrency: 2 } }),
+  });
+  const webScanPayload = await webScanResponse.json();
+  assert(webScanResponse.status === 200, `Expected web scan status 200, got ${webScanResponse.status}`);
+  assert(webScanPayload.readOnly === true, 'Expected web scanner to be read-only.');
+  assert(webScanPayload.writesPerformed === false, 'Expected web scanner to perform no writes.');
+  assert(Array.isArray(webScanPayload.localDevices), 'Expected local devices array.');
+
   const tokenMissingConfigResponse = await fetch(`${baseUrl}/api/monik/token/request`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

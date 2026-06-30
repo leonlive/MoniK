@@ -78,6 +78,39 @@ http://localhost:4173/oauth/authorize?response_type=code&client_id=alice-dev-cli
 
 Това е базата за account-linking flow: authorize → code → token → Bearer access token. ADB остава само debug/log/import helper.
 
+## Read-only WEB scanner: Yandex + Strato + LAN 6668
+
+Това е само web/read-only проверка. Не пише към Strato, не пише към телефона и не променя Android проекта.
+
+Endpoint:
+
+```http
+POST /api/monik/web-scan
+```
+
+Какво прави:
+
+1. Чете fresh Yandex snapshot от `MONIK_YANDEX_DEVICES_URL`, ако е конфигуриран.
+2. Чете последния Strato snapshot от `MONIK_STRATO_DEVICES_URL`, ако е конфигуриран.
+3. Сканира локалната мрежа за отворен Tuya local порт `6668`.
+4. Показва локалните устройства от Strato snapshot-а с `localKey`, `localIp`, `device id` и ON/OFF command descriptor.
+5. Ако Yandex refresh върне по-малко устройства, не трие нищо — показва Strato snapshot-а и маркира `missingInYandexRefresh`.
+
+Config:
+
+```bash
+MONIK_YANDEX_DEVICES_URL=https://example.yandex-or-monik/devices
+MONIK_YANDEX_ACCESS_TOKEN=
+MONIK_STRATO_DEVICES_URL=https://example.strato-or-monik/devices
+MONIK_STRATO_ACCESS_TOKEN=
+MONIK_STRATO_EXTRA_HEADERS=
+MONIK_LOCAL_SCAN_PORT=6668
+MONIK_LOCAL_SCAN_TIMEOUT_MS=350
+MONIK_LOCAL_SCAN_CIDR=
+```
+
+Важно: ако нямаме реален Yandex/Strato URL или token, scanner-ът казва `configured:false`. Това значи: няма достъп/конфигурация, а не че е писал или изтрил нещо.
+
 ## ADB път, когато SDK е в друг проект/папка
 
 Може. Не е нужно да си в Android проекта, важното е `adb.exe` да е в PATH или да зададем `ADB_PATH`. За твоята структура използвай:

@@ -8,6 +8,7 @@ const deviceFileInput = document.querySelector('#deviceFile');
 const clearResultButton = document.querySelector('#clearResult');
 const clearLogcatButton = document.querySelector('#clearLogcat');
 const readLogcatButton = document.querySelector('#readLogcat');
+const runWebScanButton = document.querySelector('#runWebScan');
 
 function showResult(payload, state = '') {
   resultBox.className = state;
@@ -96,6 +97,26 @@ jsonForm.addEventListener('submit', async (event) => {
   }
 });
 
+
+
+runWebScanButton.addEventListener('click', async () => {
+  runWebScanButton.disabled = true;
+  showResult('Read-only WEB scan: Yandex + Strato + LAN 6668...', '');
+
+  try {
+    const response = await fetch('/api/monik/web-scan', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const payload = await response.json();
+    showResult(payload, response.ok ? 'is-success' : 'is-error');
+  } catch (error) {
+    showResult({ readOnly: true, writesPerformed: false, error: error.message }, 'is-error');
+  } finally {
+    runWebScanButton.disabled = false;
+  }
+});
 
 clearLogcatButton.addEventListener('click', async () => {
   showResult('Изчистване на ADB logcat...', '');

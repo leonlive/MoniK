@@ -31,6 +31,16 @@
           </ol>
         </div>
 
+
+        <div class="adb-panel">
+          <h2>Web scanner: Yandex + Strato + LAN 6668</h2>
+          <p>
+            Read-only scan: взима последния Strato snapshot, опитва refresh от Yandex endpoint,
+            сканира локалната мрежа за порт <code>6668</code> и показва само локалните устройства с local key.
+            Не записва нищо в Strato, телефона или Android проекта.
+          </p>
+          <button id="runWebScan" type="button">Сканирай само WEB / read-only</button>
+        </div>
         <div class="adb-panel">
           <h2>ADB статус</h2>
           <div id="adbStatusBox">Проверка на ADB...</div>
