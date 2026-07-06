@@ -90,11 +90,12 @@ POST /api/monik/web-scan
 
 Какво прави:
 
-1. Чете fresh Yandex snapshot от `MONIK_YANDEX_DEVICES_URL`, ако е конфигуриран.
-2. Чете последния Strato snapshot от `MONIK_STRATO_DEVICES_URL`, ако е конфигуриран.
-3. Сканира локалната мрежа за отворен Tuya local порт `6668`.
-4. Показва локалните устройства от Strato snapshot-а с `localKey`, `localIp`, `device id` и ON/OFF command descriptor.
-5. Ако Yandex refresh върне по-малко устройства, не трие нищо — показва Strato snapshot-а и маркира `missingInYandexRefresh`.
+1. Първо сканира локалната мрежа самостоятелно — работи и без Yandex, Tuya или MoniK достъп.
+2. Връща намерените LAN IP адреси и MAC адреси от ARP/neighbour table, плюс дали порт `6668` е отворен.
+3. Чете fresh Yandex snapshot от `MONIK_YANDEX_DEVICES_URL`, ако е конфигуриран.
+4. Чете последния Strato snapshot от `MONIK_STRATO_DEVICES_URL`, ако е конфигуриран.
+5. Ако има Strato snapshot, добавя `localKey`, `device id` и ON/OFF command descriptor към съответното локално IP.
+6. Ако Yandex refresh върне по-малко устройства, не трие нищо — показва Strato snapshot-а и маркира `missingInYandexRefresh`.
 
 Config:
 
@@ -106,10 +107,11 @@ MONIK_STRATO_ACCESS_TOKEN=
 MONIK_STRATO_EXTRA_HEADERS=
 MONIK_LOCAL_SCAN_PORT=6668
 MONIK_LOCAL_SCAN_TIMEOUT_MS=350
+MONIK_LOCAL_PING_TIMEOUT_MS=250
 MONIK_LOCAL_SCAN_CIDR=
 ```
 
-Важно: ако нямаме реален Yandex/Strato URL или token, scanner-ът казва `configured:false`. Това значи: няма достъп/конфигурация, а не че е писал или изтрил нещо.
+Важно: IP/MAC scanner-ът работи и когато нямаме реален Yandex/Strato URL или token. Тогава Yandex/Strato частите казват `configured:false`, но `localScan.discoveredHosts` пак показва намерените IP/MAC записи от локалната мрежа.
 
 ## ADB път, когато SDK е в друг проект/папка
 

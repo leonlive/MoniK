@@ -1,8 +1,13 @@
-import { networkInterfaces } from 'node:os';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { networkInterfaces, platform } from 'node:os';
 import net from 'node:net';
+
+const execFileAsync = promisify(execFile);
 
 const DEFAULT_SCAN_PORT = Number(process.env.MONIK_LOCAL_SCAN_PORT || 6668);
 const DEFAULT_SCAN_TIMEOUT_MS = Number(process.env.MONIK_LOCAL_SCAN_TIMEOUT_MS || 350);
+const DEFAULT_PING_TIMEOUT_MS = Number(process.env.MONIK_LOCAL_PING_TIMEOUT_MS || 250);
 const DEFAULT_SCAN_CIDR = process.env.MONIK_LOCAL_SCAN_CIDR || '';
 
 export class WebScannerError extends Error {
@@ -112,6 +117,60 @@ async function fetchJsonSnapshot({ url, label, token, headers = {} }) {
   };
 }
 
+
+async function runCommand(command, args) {
+  try {
+    const { stdout } = await execFileAsync(command, args, { timeout: 5000, windowsHide: true });
+    return stdout;
+  } catch {
+    return '';
+  }
+}
+
+function normalizeMac(mac = '') {
+  const normalized = String(mac).trim().replaceAll('-', ':').toLowerCase();
+  return /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/.test(normalized) ? normalized : null;
+}
+
+function parseArpOutput(output = '') {
+  const entries = new Map();
+  const ipv4Pattern = /(?:\d{1,3}\.){3}\d{1,3}/g;
+  const macPattern = /(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}/ig;
+
+  for (const line of output.split(/\r?\n/)) {
+    const ip = line.match(ipv4Pattern)?.[0];
+    const mac = normalizeMac(line.match(macPattern)?.[0]);
+    if (ip && mac) entries.set(ip, mac);
+  }
+
+  return entries;
+}
+
+async function readMacTable() {
+  const outputs = await Promise.all([
+    runCommand('arp', ['-a']),
+    platform() === 'win32' ? '' : runCommand('ip', ['neigh']),
+  ]);
+  const table = new Map();
+
+  for (const output of outputs) {
+    for (const [ip, mac] of parseArpOutput(output)) {
+      table.set(ip, mac);
+    }
+  }
+
+  return table;
+}
+
+async function pingHost(host, timeoutMs) {
+  const isWindows = platform() === 'win32';
+  const args = isWindows
+    ? ['-n', '1', '-w', String(timeoutMs), host]
+    : ['-c', '1', '-W', String(Math.max(1, Math.ceil(timeoutMs / 1000))), host];
+  const output = await runCommand('ping', args);
+  return output.length > 0 && !/unreachable|timed out|100% packet loss/i.test(output);
+}
+
 function getLocalPrefixes() {
   if (DEFAULT_SCAN_CIDR) {
     return DEFAULT_SCAN_CIDR.split(',').map((prefix) => prefix.trim()).filter(Boolean);
@@ -161,38 +220,67 @@ function probePort(host, port, timeoutMs) {
   });
 }
 
-async function scanPort({ port = DEFAULT_SCAN_PORT, timeoutMs = DEFAULT_SCAN_TIMEOUT_MS, limit = 254, concurrency = 64 } = {}) {
+async function scanLan({ port = DEFAULT_SCAN_PORT, timeoutMs = DEFAULT_SCAN_TIMEOUT_MS, pingTimeoutMs = DEFAULT_PING_TIMEOUT_MS, limit = 254, concurrency = 64 } = {}) {
   const prefixes = getLocalPrefixes();
   const hosts = hostsFromPrefixes(prefixes, limit);
-  const open = [];
+  const portOpen = [];
+  const seen = new Set();
   let cursor = 0;
 
   async function worker() {
     while (cursor < hosts.length) {
       const host = hosts[cursor];
       cursor += 1;
-      const result = await probePort(host, port, timeoutMs);
-      if (result.open) open.push(result);
+      const [portResult] = await Promise.all([
+        probePort(host, port, timeoutMs),
+        pingHost(host, pingTimeoutMs),
+      ]);
+      if (portResult.open) portOpen.push(portResult);
+      seen.add(host);
     }
   }
 
   await Promise.all(Array.from({ length: Math.min(concurrency, hosts.length || 1) }, worker));
 
-  return { port, prefixes, scannedHosts: hosts.length, open };
+  const macTable = await readMacTable();
+  const discoveredMap = new Map();
+  for (const host of seen) {
+    const mac = macTable.get(host) || null;
+    const hasOpenPort = portOpen.some((entry) => entry.ip === host);
+    if (mac || hasOpenPort) {
+      discoveredMap.set(host, { ip: host, mac, port, port6668Open: hasOpenPort });
+    }
+  }
+
+  for (const [ip, mac] of macTable) {
+    if (!discoveredMap.has(ip) && hosts.includes(ip)) {
+      discoveredMap.set(ip, { ip, mac, port, port6668Open: false });
+    }
+  }
+
+  return {
+    port,
+    prefixes,
+    scannedHosts: hosts.length,
+    open: portOpen,
+    discoveredHosts: [...discoveredMap.values()].sort((left, right) => left.ip.localeCompare(right.ip, undefined, { numeric: true })),
+  };
 }
 
-function buildLocalControlList({ stratoDevices, yandexDevices, openHosts, port }) {
-  const openIps = new Set(openHosts.map((host) => host.ip));
+function buildLocalControlList({ stratoDevices, yandexDevices, discoveredHosts, port }) {
+  const hostsByIp = new Map(discoveredHosts.map((host) => [host.ip, host]));
 
   return stratoDevices.map((device) => {
     const matchedYandex = yandexDevices.find((candidate) => sameDevice(device, candidate)) || null;
     const localIp = device.localIp || matchedYandex?.localIp || null;
-    const portOpen = localIp ? openIps.has(localIp) : false;
+    const discoveredHost = localIp ? hostsByIp.get(localIp) : null;
+    const portOpen = Boolean(discoveredHost?.port6668Open);
 
     return {
       id: device.id,
       name: device.name,
       localIp,
+      mac: discoveredHost?.mac || null,
       localKey: device.localKey || null,
       online: device.online || matchedYandex?.online || portOpen,
       yandexRefreshed: Boolean(matchedYandex),
@@ -206,7 +294,7 @@ function buildLocalControlList({ stratoDevices, yandexDevices, openHosts, port }
         : null,
       source: 'strato-readonly',
     };
-  }).filter((device) => device.localIp || device.localKey || device.port6668Open);
+  }).filter((device) => device.localIp || device.mac || device.localKey || device.port6668Open);
 }
 
 export async function runReadOnlyWebScan(options = {}) {
@@ -228,13 +316,13 @@ export async function runReadOnlyWebScan(options = {}) {
   const [yandexSnapshot, stratoSnapshot, localScan] = await Promise.all([
     fetchJsonSnapshot({ url: yandexUrl, token: yandexToken, label: 'yandex' }),
     fetchJsonSnapshot({ url: stratoUrl, token: stratoToken, headers: stratoHeaders, label: 'strato' }),
-    scanPort(options.scan),
+    scanLan(options.scan),
   ]);
 
   const localDevices = buildLocalControlList({
     stratoDevices: stratoSnapshot.devices,
     yandexDevices: yandexSnapshot.devices,
-    openHosts: localScan.open,
+    discoveredHosts: localScan.discoveredHosts,
     port: localScan.port,
   });
 

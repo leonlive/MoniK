@@ -102,6 +102,7 @@ try {
   assert(webScanPayload.readOnly === true, 'Expected web scanner to be read-only.');
   assert(webScanPayload.writesPerformed === false, 'Expected web scanner to perform no writes.');
   assert(Array.isArray(webScanPayload.localDevices), 'Expected local devices array.');
+  assert(Array.isArray(webScanPayload.localScan.discoveredHosts), 'Expected local IP/MAC scan host array.');
 
   const tokenMissingConfigResponse = await fetch(`${baseUrl}/api/monik/token/request`, {
     method: 'POST',
