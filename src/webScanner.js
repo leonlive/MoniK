@@ -464,6 +464,40 @@ function buildLocalCommandTemplates({ device, localMatch, channelCount }) {
   });
 }
 
+
+function buildLocalHostCommandTemplates(host, channelCount = 1) {
+  return Array.from({ length: channelCount }, (_, index) => {
+    const dpsIndex = String(index + 1);
+    const base = {
+      protocol: 'tuya-local',
+      safePreviewOnly: true,
+      ip: host.ip,
+      mac: host.mac || null,
+      deviceId: `lan:${host.ip}`,
+      localKey: '<въведи-local-key-ръчно>',
+    };
+
+    return {
+      channel: index + 1,
+      on: { ...base, dps: { [dpsIndex]: true } },
+      off: { ...base, dps: { [dpsIndex]: false } },
+    };
+  });
+}
+
+function fallbackOnOffCapability() {
+  return {
+    type: 'devices.capabilities.on_off',
+    instance: 'on',
+    retrievable: false,
+    reportable: false,
+    parameters: {},
+    state: null,
+    testButtons: buildCapabilityControls({ type: 'devices.capabilities.on_off', state: { instance: 'on' } }),
+    fallback: true,
+  };
+}
+
 function findLocalMatch(device, localDevices, discoveredHosts) {
   const fromLocalDevices = localDevices.find((candidate) => candidate.id === device.id || candidate.name === device.name || candidate.localIp === device.localIp);
   if (fromLocalDevices) return fromLocalDevices;
@@ -496,7 +530,7 @@ export async function runYandexRawSchemaScan(options = {}) {
       isLocalFirst: Boolean(localMatch?.port6668Open || localMatch?.localKey || localMatch?.localIp),
       local: localMatch || null,
       channelCount,
-      capabilities: rawCapabilities.map((capability) => ({
+      capabilities: (rawCapabilities.length > 0 ? rawCapabilities.map((capability) => ({
         type: capability.type || 'unknown',
         instance: capability.state?.instance || capability.parameters?.instance || capability.instance || null,
         retrievable: Boolean(capability.retrievable),
@@ -504,7 +538,7 @@ export async function runYandexRawSchemaScan(options = {}) {
         parameters: capability.parameters || {},
         state: capability.state || null,
         testButtons: buildCapabilityControls(capability),
-      })),
+      })) : [fallbackOnOffCapability()]),
       properties: rawProperties.map((property) => ({
         type: property.type || 'unknown',
         instance: property.state?.instance || property.parameters?.instance || property.instance || null,
@@ -525,9 +559,10 @@ export async function runYandexRawSchemaScan(options = {}) {
       name: `LAN ${host.ip}`,
       isLocalFirst: true,
       local: { localIp: host.ip, mac: host.mac, port6668Open: host.port6668Open, localKey: null },
-      capabilities: [],
+      capabilities: [fallbackOnOffCapability()],
       properties: [],
-      localCommandJson: [],
+      channelCount: 1,
+      localCommandJson: buildLocalHostCommandTemplates(host, 1),
       raw: null,
     }));
 

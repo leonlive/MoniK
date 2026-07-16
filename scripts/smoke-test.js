@@ -116,6 +116,18 @@ try {
   assert(yandexSchemaPayload.commandsExecuted === false, 'Expected Yandex schema builder to execute no commands.');
   assert(Array.isArray(yandexSchemaPayload.devices), 'Expected Yandex schema devices array.');
 
+
+  const fixtureYandexUrl = `data:application/json,${encodeURIComponent(JSON.stringify({ devices: [{ id: 'fixture-device', name: 'Fixture Lamp' }] }))}`;
+  const fixtureSchemaResponse = await fetch(`${baseUrl}/api/monik/yandex-schema`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ yandexUrl: fixtureYandexUrl, scan: { limit: 2, timeoutMs: 25, concurrency: 2 } }),
+  });
+  const fixtureSchemaPayload = await fixtureSchemaResponse.json();
+  assert(fixtureSchemaResponse.status === 200, `Expected fixture schema status 200, got ${fixtureSchemaResponse.status}`);
+  assert(fixtureSchemaPayload.devices.length === 1, 'Expected one fixture device.');
+  assert(fixtureSchemaPayload.devices[0].capabilities[0].testButtons.length >= 2, 'Expected ON/OFF JSON buttons for fixture device.');
+
   const tokenMissingConfigResponse = await fetch(`${baseUrl}/api/monik/token/request`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
