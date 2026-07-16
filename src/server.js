@@ -12,6 +12,7 @@ import {
   publicOAuthConfig,
   refreshAccessToken,
 } from './oauthStore.js';
+import { CommandError, sendLocalCommand, sendYandexCommand } from './commandClient.js';
 import { DeviceImportError, getImportedDevices, importDevicesFromSdk } from './deviceStore.js';
 import { WebScannerError, runReadOnlyWebScan, runYandexRawSchemaScan } from './webScanner.js';
 
@@ -240,6 +241,25 @@ function handleOAuthAccount(request, response) {
 
 
 
+
+async function handleDeviceCommand(request, response, target) {
+  try {
+    const payload = await readJsonBody(request);
+    const result = target === 'local'
+      ? await sendLocalCommand(payload)
+      : await sendYandexCommand(payload);
+    sendJson(response, result.upstream.ok ? 200 : 502, result);
+  } catch (error) {
+    const statusCode = error instanceof CommandError ? error.statusCode : 500;
+    sendJson(response, statusCode, {
+      commandSent: false,
+      target,
+      error: error.message,
+      details: error.details,
+    });
+  }
+}
+
 async function handleYandexSchema(request, response) {
   try {
     const options = request.method === 'POST' ? await readJsonBody(request) : {};
@@ -339,6 +359,16 @@ async function route(request, response) {
 
   if (request.method === 'GET' && url.pathname === '/api/monik/account') {
     handleOAuthAccount(request, response);
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/monik/yandex-command') {
+    await handleDeviceCommand(request, response, 'yandex');
+    return;
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/monik/local-command') {
+    await handleDeviceCommand(request, response, 'local');
     return;
   }
 

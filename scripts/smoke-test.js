@@ -128,6 +128,25 @@ try {
   assert(fixtureSchemaPayload.devices.length === 1, 'Expected one fixture device.');
   assert(fixtureSchemaPayload.devices[0].capabilities[0].testButtons.length >= 2, 'Expected ON/OFF JSON buttons for fixture device.');
 
+
+  const missingYandexCommandResponse = await fetch(`${baseUrl}/api/monik/yandex-command`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ deviceId: 'fixture-device', action: { type: 'devices.capabilities.on_off', state: { instance: 'on', value: true } } }),
+  });
+  const missingYandexCommandPayload = await missingYandexCommandResponse.json();
+  assert(missingYandexCommandResponse.status === 400, `Expected missing Yandex command config status 400, got ${missingYandexCommandResponse.status}`);
+  assert(missingYandexCommandPayload.commandSent === false, 'Expected Yandex command not to be sent without action URL.');
+
+  const missingLocalCommandResponse = await fetch(`${baseUrl}/api/monik/local-command`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ protocol: 'tuya-local', ip: '127.0.0.1', localKey: 'abc', dps: { 1: true } }),
+  });
+  const missingLocalCommandPayload = await missingLocalCommandResponse.json();
+  assert(missingLocalCommandResponse.status === 400, `Expected missing local command config status 400, got ${missingLocalCommandResponse.status}`);
+  assert(missingLocalCommandPayload.commandSent === false, 'Expected local command not to be sent without local command URL.');
+
   const tokenMissingConfigResponse = await fetch(`${baseUrl}/api/monik/token/request`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

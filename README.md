@@ -92,10 +92,27 @@ POST /api/monik/yandex-schema
 1. Прави read-only GET към `MONIK_YANDEX_DEVICES_URL`, ако е конфигуриран.
 2. Връща `yandexRaw`, за да видим целия оригинален JSON от Yandex.
 3. За всяко устройство строи схема от `capabilities` и `properties`.
-4. Генерира безопасни JSON preview бутони за ON/OFF, brightness/range, mode, toggle и color controls според RAW capability схемата.
-5. Генерира local command JSON шаблони за Tuya local ON/OFF по канали, ако има local IP/key match.
-6. Не изпълнява device commands — връща `commandsExecuted:false`. Реалният тест се прави ръчно от потребителя след преглед на JSON.
+4. Генерира JSON preview бутони и отделни реални `ИЗПЪЛНИ` бутони за ON/OFF, brightness/range, mode, toggle и color controls според RAW capability схемата.
+5. Генерира local command JSON шаблони и реални `ИЗПЪЛНИ Local` бутони за Tuya local ON/OFF по канали, ако има local IP/key match или LAN host.
+6. При построяване на схемата не изпълнява device commands — връща `commandsExecuted:false`. Команда се праща само когато потребителят натисне `ИЗПЪЛНИ`.
 7. Сортира локалните устройства първи, когато има local IP/key/port match.
+
+
+Командните бутони използват отделни endpoint-и:
+
+```http
+POST /api/monik/yandex-command
+POST /api/monik/local-command
+```
+
+За реално изпращане задай:
+
+```bash
+MONIK_YANDEX_ACTION_URL=https://...
+MONIK_LOCAL_COMMAND_URL=https://...
+```
+
+Ако тези URL-и не са зададени, бутоните пак работят като UI, но server-ът връща `commandSent:false` и не изпраща нищо.
 
 Ако Yandex достъпът още не е конфигуриран, endpoint-ът пак връща LAN scan данните, но `devices` от Yandex ще е празен.
 

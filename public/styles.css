@@ -277,3 +277,11 @@ pre.is-success { color: #bbf7d0 !important; }
   gap: 8px;
   margin-top: 8px;
 }
+
+.real-command {
+  min-height: 40px;
+  padding: 0 16px;
+  background: #16a34a;
+}
+
+.real-command:hover { background: #15803d; }

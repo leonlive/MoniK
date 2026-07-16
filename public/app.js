@@ -22,6 +22,24 @@ function escapeHtml(value) {
     .replaceAll("'", '&#039;');
 }
 
+
+async function sendCommand(endpoint, command) {
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(command),
+  });
+  const payload = await response.json();
+  showResult(payload, response.ok ? 'is-success' : 'is-error');
+}
+
+function commandWithManualLocalKey(command) {
+  if (command.localKey && !String(command.localKey).includes('въведи-local-key')) return command;
+  const localKey = window.prompt('Въведи localKey за това устройство:');
+  if (!localKey) return null;
+  return { ...command, localKey };
+}
+
 function renderSchema(payload) {
   if (!payload.devices?.length) {
     schemaTable.innerHTML = '<p class="is-error">Няма Yandex devices. Провери MONIK_YANDEX_DEVICES_URL / token. LAN hosts са в JSON отговора.</p>';
@@ -34,16 +52,22 @@ function renderSchema(payload) {
       <li>
         <strong>${escapeHtml(capability.type)}</strong> ${capability.instance ? `· <code>${escapeHtml(capability.instance)}</code>` : ''}
         <div class="button-row">
-          ${capability.testButtons.map((button) => `
-            <button class="secondary-button json-preview" type="button" data-json="${escapeHtml(JSON.stringify({ deviceId: device.id, action: button.command }, null, 2))}">${escapeHtml(button.label)}</button>
-          `).join('')}
+          ${capability.testButtons.map((button) => {
+            const command = { deviceId: device.id, action: button.command };
+            return `
+              <button class="secondary-button json-preview" type="button" data-json="${escapeHtml(JSON.stringify(command, null, 2))}">JSON ${escapeHtml(button.label)}</button>
+              <button class="real-command yandex-command" type="button" data-json="${escapeHtml(JSON.stringify(command))}">ИЗПЪЛНИ ${escapeHtml(button.label)}</button>
+            `;
+          }).join('')}
         </div>
       </li>
     `).join('');
     const localCommands = device.localCommandJson.map((command) => `
       <div class="button-row">
         <button class="secondary-button json-preview" type="button" data-json="${escapeHtml(JSON.stringify(command.on, null, 2))}">Local ch.${command.channel} ON JSON</button>
+        <button class="real-command local-command" type="button" data-json="${escapeHtml(JSON.stringify(command.on))}">ИЗПЪЛНИ Local ch.${command.channel} ON</button>
         <button class="secondary-button json-preview" type="button" data-json="${escapeHtml(JSON.stringify(command.off, null, 2))}">Local ch.${command.channel} OFF JSON</button>
+        <button class="real-command local-command" type="button" data-json="${escapeHtml(JSON.stringify(command.off))}">ИЗПЪЛНИ Local ch.${command.channel} OFF</button>
       </div>
     `).join('');
 
@@ -71,6 +95,15 @@ function renderSchema(payload) {
 
   schemaTable.querySelectorAll('.json-preview').forEach((button) => {
     button.addEventListener('click', () => showResult(button.dataset.json, 'is-success'));
+  });
+  schemaTable.querySelectorAll('.yandex-command').forEach((button) => {
+    button.addEventListener('click', () => sendCommand('/api/monik/yandex-command', JSON.parse(button.dataset.json)));
+  });
+  schemaTable.querySelectorAll('.local-command').forEach((button) => {
+    button.addEventListener('click', () => {
+      const command = commandWithManualLocalKey(JSON.parse(button.dataset.json));
+      if (command) sendCommand('/api/monik/local-command', command);
+    });
   });
 }
 
