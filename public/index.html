@@ -32,6 +32,16 @@
         </div>
 
 
+
+        <div class="adb-panel">
+          <h2>Yandex RAW схема + безопасни JSON бутони</h2>
+          <p>
+            Първо прави read-only GET към Yandex RAW devices, строи пълна схема по capabilities/properties,
+            после показва бутони, които само генерират JSON за тест. Не изпраща команди към устройствата.
+          </p>
+          <button id="buildYandexSchema" type="button">Вземи Yandex RAW и построи схема</button>
+          <div id="schemaTable" class="schema-table" aria-live="polite"></div>
+        </div>
         <div class="adb-panel">
           <h2>Web scanner: Yandex + Strato + LAN 6668</h2>
           <p>

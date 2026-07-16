@@ -78,6 +78,27 @@ http://localhost:4173/oauth/authorize?response_type=code&client_id=alice-dev-cli
 
 Това е базата за account-linking flow: authorize → code → token → Bearer access token. ADB остава само debug/log/import helper.
 
+
+## Yandex RAW schema builder — без реални команди
+
+Endpoint:
+
+```http
+POST /api/monik/yandex-schema
+```
+
+Какво прави:
+
+1. Прави read-only GET към `MONIK_YANDEX_DEVICES_URL`, ако е конфигуриран.
+2. Връща `yandexRaw`, за да видим целия оригинален JSON от Yandex.
+3. За всяко устройство строи схема от `capabilities` и `properties`.
+4. Генерира безопасни JSON preview бутони за ON/OFF, brightness/range, mode, toggle и color controls според RAW capability схемата.
+5. Генерира local command JSON шаблони за Tuya local ON/OFF по канали, ако има local IP/key match.
+6. Не изпълнява device commands — връща `commandsExecuted:false`. Реалният тест се прави ръчно от потребителя след преглед на JSON.
+7. Сортира локалните устройства първи, когато има local IP/key/port match.
+
+Ако Yandex достъпът още не е конфигуриран, endpoint-ът пак връща LAN scan данните, но `devices` от Yandex ще е празен.
+
 ## Read-only WEB scanner: Yandex + Strato + LAN 6668
 
 Това е само web/read-only проверка. Не пише към Strato, не пише към телефона и не променя Android проекта.

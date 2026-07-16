@@ -104,6 +104,18 @@ try {
   assert(Array.isArray(webScanPayload.localDevices), 'Expected local devices array.');
   assert(Array.isArray(webScanPayload.localScan.discoveredHosts), 'Expected local IP/MAC scan host array.');
 
+
+  const yandexSchemaResponse = await fetch(`${baseUrl}/api/monik/yandex-schema`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ scan: { limit: 2, timeoutMs: 25, concurrency: 2 } }),
+  });
+  const yandexSchemaPayload = await yandexSchemaResponse.json();
+  assert(yandexSchemaResponse.status === 200, `Expected Yandex schema status 200, got ${yandexSchemaResponse.status}`);
+  assert(yandexSchemaPayload.readOnly === true, 'Expected Yandex schema builder to be read-only.');
+  assert(yandexSchemaPayload.commandsExecuted === false, 'Expected Yandex schema builder to execute no commands.');
+  assert(Array.isArray(yandexSchemaPayload.devices), 'Expected Yandex schema devices array.');
+
   const tokenMissingConfigResponse = await fetch(`${baseUrl}/api/monik/token/request`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

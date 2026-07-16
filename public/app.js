@@ -9,6 +9,70 @@ const clearResultButton = document.querySelector('#clearResult');
 const clearLogcatButton = document.querySelector('#clearLogcat');
 const readLogcatButton = document.querySelector('#readLogcat');
 const runWebScanButton = document.querySelector('#runWebScan');
+const buildYandexSchemaButton = document.querySelector('#buildYandexSchema');
+const schemaTable = document.querySelector('#schemaTable');
+
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function renderSchema(payload) {
+  if (!payload.devices?.length) {
+    schemaTable.innerHTML = '<p class="is-error">Няма Yandex devices. Провери MONIK_YANDEX_DEVICES_URL / token. LAN hosts са в JSON отговора.</p>';
+    return;
+  }
+
+  schemaTable.innerHTML = payload.devices.map((device, index) => {
+    const local = device.local ? `${device.local.localIp || '-'} · ${device.local.mac || 'no-mac'} · ${device.local.port6668Open ? '6668 open' : '6668 closed/unknown'}` : 'няма local match';
+    const capabilities = device.capabilities.map((capability) => `
+      <li>
+        <strong>${escapeHtml(capability.type)}</strong> ${capability.instance ? `· <code>${escapeHtml(capability.instance)}</code>` : ''}
+        <div class="button-row">
+          ${capability.testButtons.map((button) => `
+            <button class="secondary-button json-preview" type="button" data-json="${escapeHtml(JSON.stringify({ deviceId: device.id, action: button.command }, null, 2))}">${escapeHtml(button.label)}</button>
+          `).join('')}
+        </div>
+      </li>
+    `).join('');
+    const localCommands = device.localCommandJson.map((command) => `
+      <div class="button-row">
+        <button class="secondary-button json-preview" type="button" data-json="${escapeHtml(JSON.stringify(command.on, null, 2))}">Local ch.${command.channel} ON JSON</button>
+        <button class="secondary-button json-preview" type="button" data-json="${escapeHtml(JSON.stringify(command.off, null, 2))}">Local ch.${command.channel} OFF JSON</button>
+      </div>
+    `).join('');
+
+    return `
+      <article class="schema-card ${device.isLocalFirst ? 'local-first' : ''}">
+        <h3>${index + 1}. ${escapeHtml(device.name)} ${device.isLocalFirst ? '<span>LOCAL</span>' : ''}</h3>
+        <p><strong>ID:</strong> <code>${escapeHtml(device.id)}</code></p>
+        <p><strong>Type:</strong> ${escapeHtml(device.type || '-')} · <strong>Channels:</strong> ${escapeHtml(device.channelCount || 1)}</p>
+        <p><strong>Local:</strong> ${escapeHtml(local)}</p>
+        <details open>
+          <summary>Capabilities / тест JSON бутони</summary>
+          <ul>${capabilities || '<li>Няма capabilities в RAW.</li>'}</ul>
+        </details>
+        <details>
+          <summary>Локални command JSON бутони</summary>
+          ${localCommands || '<p>Няма local IP/key match. Можеш да добавиш local key ръчно по JSON шаблона след като имаме IP/device mapping.</p>'}
+        </details>
+        <details>
+          <summary>RAW device JSON</summary>
+          <pre>${escapeHtml(JSON.stringify(device.raw, null, 2))}</pre>
+        </details>
+      </article>
+    `;
+  }).join('');
+
+  schemaTable.querySelectorAll('.json-preview').forEach((button) => {
+    button.addEventListener('click', () => showResult(button.dataset.json, 'is-success'));
+  });
+}
 
 function showResult(payload, state = '') {
   resultBox.className = state;
@@ -98,6 +162,30 @@ jsonForm.addEventListener('submit', async (event) => {
 });
 
 
+
+
+buildYandexSchemaButton.addEventListener('click', async () => {
+  buildYandexSchemaButton.disabled = true;
+  schemaTable.innerHTML = '<p>Чета Yandex RAW read-only и строя схема...</p>';
+  showResult('Yandex RAW schema build: само GET/status/info, без device commands...', '');
+
+  try {
+    const response = await fetch('/api/monik/yandex-schema', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const payload = await response.json();
+    renderSchema(payload);
+    showResult(payload, response.ok ? 'is-success' : 'is-error');
+  } catch (error) {
+    const payload = { readOnly: true, commandsExecuted: false, error: error.message };
+    schemaTable.innerHTML = `<p class="is-error">${escapeHtml(error.message)}</p>`;
+    showResult(payload, 'is-error');
+  } finally {
+    buildYandexSchemaButton.disabled = false;
+  }
+});
 
 runWebScanButton.addEventListener('click', async () => {
   runWebScanButton.disabled = true;

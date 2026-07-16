@@ -350,3 +350,199 @@ export async function runReadOnlyWebScan(options = {}) {
     ],
   };
 }
+
+function inferChannelCount(device, capabilities) {
+  const onOffCapabilities = capabilities.filter((capability) => String(capability.type || '').includes('on_off'));
+  const channelInstances = onOffCapabilities
+    .map((capability) => capability.state?.instance || capability.parameters?.instance || capability.instance)
+    .filter(Boolean);
+  const numberedChannels = channelInstances
+    .map((instance) => String(instance).match(/(?:channel|switch|outlet|relay|gang)[_-]?(\d+)/i)?.[1])
+    .filter(Boolean)
+    .map(Number);
+
+  if (numberedChannels.length > 0) return Math.max(...numberedChannels);
+  if (onOffCapabilities.length > 1) return onOffCapabilities.length;
+
+  const name = `${device.name || ''} ${device.raw?.name || ''}`;
+  if (/\b(дву|double|2[ -]?gang|two)\b/i.test(name)) return 2;
+  if (/\b(три|triple|3[ -]?gang|three)\b/i.test(name)) return 3;
+  if (/\b(четири|quad|4[ -]?gang|four)\b/i.test(name)) return 4;
+  return 1;
+}
+
+function actionTemplate(type, instance, value) {
+  return {
+    type,
+    state: {
+      instance,
+      value,
+    },
+  };
+}
+
+function rangeValues(parameters = {}, instance = '') {
+  const range = parameters.range || {};
+  const min = Number.isFinite(range.min) ? range.min : 0;
+  const max = Number.isFinite(range.max) ? range.max : instance === 'brightness' ? 100 : 1;
+  const middle = Math.round((min + max) / 2);
+  return [...new Set([min, middle, max])];
+}
+
+function buildCapabilityControls(capability = {}) {
+  const type = capability.type || 'unknown';
+  const parameters = capability.parameters || {};
+  const state = capability.state || {};
+  const instance = state.instance || parameters.instance || capability.instance || 'default';
+
+  if (String(type).includes('on_off')) {
+    return [
+      { label: 'ON JSON', safe: true, command: actionTemplate(type, 'on', true) },
+      { label: 'OFF JSON', safe: true, command: actionTemplate(type, 'on', false) },
+    ];
+  }
+
+  if (String(type).includes('range')) {
+    return rangeValues(parameters, instance).map((value) => ({
+      label: `${instance}=${value}`,
+      safe: true,
+      command: actionTemplate(type, instance, value),
+    }));
+  }
+
+  if (String(type).includes('mode')) {
+    return (parameters.modes || []).map((mode) => ({
+      label: `${instance}:${mode.value}`,
+      safe: true,
+      command: actionTemplate(type, instance, mode.value),
+    }));
+  }
+
+  if (String(type).includes('toggle')) {
+    return [
+      { label: `${instance}=true`, safe: true, command: actionTemplate(type, instance, true) },
+      { label: `${instance}=false`, safe: true, command: actionTemplate(type, instance, false) },
+    ];
+  }
+
+  if (String(type).includes('color_setting')) {
+    const controls = [];
+    if (parameters.color_model) controls.push({ label: 'RGB sample JSON', safe: true, command: actionTemplate(type, 'rgb', 16777215) });
+    if (parameters.temperature_k) controls.push({ label: 'temperature_k JSON', safe: true, command: actionTemplate(type, 'temperature_k', parameters.temperature_k.min || 2700) });
+    return controls;
+  }
+
+  return [];
+}
+
+function buildLocalCommandTemplates({ device, localMatch, channelCount }) {
+  if (!localMatch?.localKey && !localMatch?.localIp) return [];
+
+  return Array.from({ length: channelCount }, (_, index) => {
+    const dpsIndex = String(index + 1);
+    return {
+      channel: index + 1,
+      on: {
+        protocol: 'tuya-local',
+        safePreviewOnly: true,
+        ip: localMatch.localIp,
+        mac: localMatch.mac || null,
+        deviceId: device.id,
+        localKey: localMatch.localKey || '<въведи-local-key-ръчно>',
+        dps: { [dpsIndex]: true },
+      },
+      off: {
+        protocol: 'tuya-local',
+        safePreviewOnly: true,
+        ip: localMatch.localIp,
+        mac: localMatch.mac || null,
+        deviceId: device.id,
+        localKey: localMatch.localKey || '<въведи-local-key-ръчно>',
+        dps: { [dpsIndex]: false },
+      },
+    };
+  });
+}
+
+function findLocalMatch(device, localDevices, discoveredHosts) {
+  const fromLocalDevices = localDevices.find((candidate) => candidate.id === device.id || candidate.name === device.name || candidate.localIp === device.localIp);
+  if (fromLocalDevices) return fromLocalDevices;
+
+  const rawIp = device.raw?.localIp || device.raw?.local_ip || device.raw?.ip || device.localIp;
+  const host = rawIp ? discoveredHosts.find((candidate) => candidate.ip === rawIp) : null;
+  return host ? { localIp: host.ip, mac: host.mac, port6668Open: host.port6668Open, localKey: device.localKey || null } : null;
+}
+
+export async function runYandexRawSchemaScan(options = {}) {
+  const scan = await runReadOnlyWebScan(options);
+  const yandexPayload = scan.yandex.configured
+    ? (await fetchJsonSnapshot({
+        url: options.yandexUrl ?? process.env.MONIK_YANDEX_DEVICES_URL,
+        token: options.yandexToken ?? process.env.MONIK_YANDEX_ACCESS_TOKEN,
+        label: 'yandex',
+      })).payload
+    : null;
+  const yandexDevices = yandexPayload ? normalizeSnapshot(yandexPayload, 'yandex') : [];
+  const schemaDevices = yandexDevices.map((device) => {
+    const rawCapabilities = Array.isArray(device.raw?.capabilities) ? device.raw.capabilities : [];
+    const rawProperties = Array.isArray(device.raw?.properties) ? device.raw.properties : [];
+    const localMatch = findLocalMatch(device, scan.localDevices, scan.localScan.discoveredHosts);
+    const channelCount = inferChannelCount(device, rawCapabilities);
+
+    return {
+      id: device.id,
+      name: device.name,
+      type: device.raw?.type || device.category || null,
+      isLocalFirst: Boolean(localMatch?.port6668Open || localMatch?.localKey || localMatch?.localIp),
+      local: localMatch || null,
+      channelCount,
+      capabilities: rawCapabilities.map((capability) => ({
+        type: capability.type || 'unknown',
+        instance: capability.state?.instance || capability.parameters?.instance || capability.instance || null,
+        retrievable: Boolean(capability.retrievable),
+        reportable: Boolean(capability.reportable),
+        parameters: capability.parameters || {},
+        state: capability.state || null,
+        testButtons: buildCapabilityControls(capability),
+      })),
+      properties: rawProperties.map((property) => ({
+        type: property.type || 'unknown',
+        instance: property.state?.instance || property.parameters?.instance || property.instance || null,
+        retrievable: Boolean(property.retrievable),
+        reportable: Boolean(property.reportable),
+        parameters: property.parameters || {},
+        state: property.state || null,
+      })),
+      localCommandJson: buildLocalCommandTemplates({ device, localMatch, channelCount }),
+      raw: device.raw,
+    };
+  }).sort((left, right) => Number(right.isLocalFirst) - Number(left.isLocalFirst));
+
+  const localOnlyHosts = scan.localScan.discoveredHosts
+    .filter((host) => !schemaDevices.some((device) => device.local?.localIp === host.ip))
+    .map((host) => ({
+      id: `lan:${host.ip}`,
+      name: `LAN ${host.ip}`,
+      isLocalFirst: true,
+      local: { localIp: host.ip, mac: host.mac, port6668Open: host.port6668Open, localKey: null },
+      capabilities: [],
+      properties: [],
+      localCommandJson: [],
+      raw: null,
+    }));
+
+  return {
+    readOnly: true,
+    writesPerformed: false,
+    commandsExecuted: false,
+    yandexConfigured: scan.yandex.configured,
+    yandexRaw: yandexPayload,
+    localScan: scan.localScan,
+    devices: [...localOnlyHosts, ...schemaDevices],
+    notes: [
+      'RAW Yandex read is GET only.',
+      'Schema buttons are JSON previews only; this endpoint does not send device commands.',
+      'Local command JSON is generated for manual testing by the user only.',
+    ],
+  };
+}
