@@ -425,3 +425,34 @@ npm audit --omit=dev
 ```text
 OK: SDK bridge works at http://127.0.0.1:4173
 ```
+
+## Proven Python LAN/Tuya builder
+
+Добавен е standalone Python builder от branch `codex/-tuya`:
+
+```bat
+START_MONIK_V6_PROVEN_CLOUD_MULTI_IDENTITY_LAN.bat
+```
+
+или директно:
+
+```bat
+py -3 MONIK_V6_PROVEN_CLOUD_MULTI_IDENTITY_LAN.py
+```
+
+Промени спрямо качения Python файл:
+
+- local scanner-ът вече не е заключен към `192.168.178.0/24`;
+- ако зададеш `MONIK_SCAN_CIDR`, сканира тази мрежа, иначе взима активните private `/24` мрежи от Windows/host-а;
+- `nmap` timeout-ът се управлява с `MONIK_NMAP_TIMEOUT` и default е 45 секунди, за да не виси дълго;
+- ако `nmap` липсва или не върне резултат, има fallback TCP scan на порт `6668`;
+- сканирането не праща Tuya DP/control команди — само identity/порт/ARP/status info;
+- командите към Tuya/local остават само след ръчно натискане на съответния бутон.
+
+Пример:
+
+```bat
+set MONIK_SCAN_CIDR=192.168.178.0/24
+set MONIK_NMAP_TIMEOUT=45
+START_MONIK_V6_PROVEN_CLOUD_MULTI_IDENTITY_LAN.bat
+```
