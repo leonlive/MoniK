@@ -231,6 +231,7 @@ adbForm.addEventListener('submit', async (event) => {
     const payload = await response.json();
 
     showResult(payload, response.ok ? 'is-success' : 'is-error');
+    if (response.ok) schemaTable.innerHTML = '<p class="is-success">JSON файлът е зареден. Натисни “Сканирай само WEB / read-only” или “Вземи Yandex RAW и построи схема”, за да се сравни със LAN scan-а.</p>';
   } catch (error) {
     showResult({ imported: false, error: error.message }, 'is-error');
   } finally {
@@ -242,10 +243,18 @@ jsonForm.addEventListener('submit', async (event) => {
   event.preventDefault();
 
   const submitButton = jsonForm.querySelector('button[type="submit"]');
-  const devicesJson = new FormData(jsonForm).get('devicesJson');
+  const formData = new FormData(jsonForm);
+  const devicesFile = formData.get('devicesFile');
+  const pastedJson = formData.get('devicesJson');
+  const devicesJson = devicesFile && devicesFile.size > 0 ? await devicesFile.text() : pastedJson;
+
+  if (!devicesJson?.trim()) {
+    showResult({ imported: false, error: 'Избери JSON файл или paste-ни JSON.' }, 'is-error');
+    return;
+  }
 
   submitButton.disabled = true;
-  showResult('MoniK server приема JSON export...', '');
+  showResult('MoniK server приема пълното Tuya sharing JSON copy...', '');
 
   try {
     const response = await fetch('/api/monik/devices/import', {
@@ -256,6 +265,7 @@ jsonForm.addEventListener('submit', async (event) => {
     const payload = await response.json();
 
     showResult(payload, response.ok ? 'is-success' : 'is-error');
+    if (response.ok) schemaTable.innerHTML = '<p class="is-success">Пълното Tuya sharing JSON copy е заредено. Натисни “Сканирай само WEB / read-only”, за да се сравнят ID/IP/localKey стойностите със LAN scan-а.</p>';
   } catch (error) {
     showResult({ imported: false, error: error.message }, 'is-error');
   } finally {

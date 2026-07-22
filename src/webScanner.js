@@ -313,6 +313,12 @@ export async function runReadOnlyWebScan(options = {}) {
     stratoHeaders['x-monik-tuya-access-secret'] = process.env.MONIK_TUYA_ACCESS_SECRET;
   }
 
+  const importedSnapshot = {
+    configured: Array.isArray(options.importedDevices),
+    label: 'manual-json',
+    devices: normalizeSnapshot(options.importedDevices || [], 'manual-json'),
+  };
+
   const [yandexSnapshot, stratoSnapshot, localScan] = await Promise.all([
     fetchJsonSnapshot({ url: yandexUrl, token: yandexToken, label: 'yandex' }),
     fetchJsonSnapshot({ url: stratoUrl, token: stratoToken, headers: stratoHeaders, label: 'strato' }),
@@ -320,7 +326,7 @@ export async function runReadOnlyWebScan(options = {}) {
   ]);
 
   const localDevices = buildLocalControlList({
-    stratoDevices: stratoSnapshot.devices,
+    stratoDevices: [...importedSnapshot.devices, ...stratoSnapshot.devices],
     yandexDevices: yandexSnapshot.devices,
     discoveredHosts: localScan.discoveredHosts,
     port: localScan.port,
@@ -334,6 +340,10 @@ export async function runReadOnlyWebScan(options = {}) {
       configured: yandexSnapshot.configured,
       deviceCount: yandexSnapshot.devices.length,
       error: yandexSnapshot.error || null,
+    },
+    manualJson: {
+      configured: importedSnapshot.configured,
+      deviceCount: importedSnapshot.devices.length,
     },
     strato: {
       configured: stratoSnapshot.configured,
@@ -517,7 +527,9 @@ export async function runYandexRawSchemaScan(options = {}) {
       })).payload
     : null;
   const yandexDevices = yandexPayload ? normalizeSnapshot(yandexPayload, 'yandex') : [];
-  const schemaDevices = yandexDevices.map((device) => {
+  const manualDevices = normalizeSnapshot(options.importedDevices || [], 'manual-json');
+  const schemaSourceDevices = yandexDevices.length > 0 ? yandexDevices : manualDevices;
+  const schemaDevices = schemaSourceDevices.map((device) => {
     const rawCapabilities = Array.isArray(device.raw?.capabilities) ? device.raw.capabilities : [];
     const rawProperties = Array.isArray(device.raw?.properties) ? device.raw.properties : [];
     const localMatch = findLocalMatch(device, scan.localDevices, scan.localScan.discoveredHosts);
@@ -597,6 +609,8 @@ export async function runYandexRawSchemaScan(options = {}) {
     writesPerformed: false,
     commandsExecuted: false,
     yandexConfigured: scan.yandex.configured,
+    manualJsonConfigured: scan.manualJson.configured,
+    manualJsonDeviceCount: scan.manualJson.deviceCount,
     yandexRaw: yandexPayload,
     localScan: scan.localScan,
     devices: [...localOnlyDevices, ...localOnlyHosts, ...schemaDevices],

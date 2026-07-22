@@ -263,7 +263,7 @@ async function handleDeviceCommand(request, response, target) {
 async function handleYandexSchema(request, response) {
   try {
     const options = request.method === 'POST' ? await readJsonBody(request) : {};
-    sendJson(response, 200, await runYandexRawSchemaScan(options));
+    sendJson(response, 200, await runYandexRawSchemaScan({ ...options, importedDevices: getImportedDevices().devices }));
   } catch (error) {
     const statusCode = error instanceof WebScannerError ? error.statusCode : 500;
     sendJson(response, statusCode, {
@@ -279,7 +279,7 @@ async function handleYandexSchema(request, response) {
 async function handleWebScan(request, response) {
   try {
     const options = request.method === 'POST' ? await readJsonBody(request) : {};
-    sendJson(response, 200, await runReadOnlyWebScan(options));
+    sendJson(response, 200, await runReadOnlyWebScan({ ...options, importedDevices: getImportedDevices().devices }));
   } catch (error) {
     const statusCode = error instanceof WebScannerError ? error.statusCode : 500;
     sendJson(response, statusCode, {

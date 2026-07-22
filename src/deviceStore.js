@@ -26,6 +26,9 @@ function normalizeDevice(device) {
     name: name ? String(name) : String(id),
     productId: device.productId || device.product_id || null,
     category: device.category || device.categoryCode || null,
+    localKey: device.localKey || device.local_key || device.key || device.controlKey || null,
+    localIp: device.localIp || device.local_ip || device.ip || device.host || null,
+    mac: device.mac || device.macAddress || device.mac_address || null,
     online: Boolean(device.online ?? device.isOnline ?? false),
     raw: device,
   };

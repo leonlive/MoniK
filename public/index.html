@@ -81,8 +81,12 @@
           <summary>Ръчен тест с JSON, ако ADB още не е готов</summary>
           <form id="deviceImportForm" class="link-form">
             <label>
-              <span>JSON от MoniK Android/Tuya SDK export</span>
-              <textarea name="devicesJson" required placeholder='{"devices":[{"devId":"real-device-id","name":"Lamp","online":true}]}'></textarea>
+              <span>JSON файл — пълно Tuya sharing copy</span>
+              <input id="devicesFile" name="devicesFile" type="file" accept=".json,application/json" />
+            </label>
+            <label>
+              <span>Или paste JSON от MoniK Android/Tuya SDK export</span>
+              <textarea name="devicesJson" placeholder='{"devices":[{"devId":"real-device-id","name":"Lamp","localKey":"...","ip":"192.168.1.50","online":true}]}'></textarea>
             </label>
             <button type="submit">Импорт JSON в MoniK server</button>
           </form>
