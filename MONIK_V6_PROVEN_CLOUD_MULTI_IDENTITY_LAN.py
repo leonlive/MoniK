@@ -1830,7 +1830,7 @@ def nmap_6668_scan(networks: list[ipaddress.IPv4Network] | None = None) -> dict:
                 capture_output=True,
                 text=True,
                 errors="replace",
-                timeout=float(os.environ.get("MONIK_NMAP_TIMEOUT", "45")),
+                timeout=float(os.environ.get("MONIK_NMAP_TIMEOUT", "8")),
                 creationflags=(
                     getattr(subprocess, "CREATE_NO_WINDOW", 0)
                     if os.name == "nt"
@@ -1966,20 +1966,26 @@ def tinytuya_lan_scan() -> dict:
          against the nmap addresses.
     """
     networks = configured_scan_networks()
-    nmap_result = nmap_6668_scan(networks)
-    if not nmap_result.get("success"):
-        fallback = tcp_tuya_port_scan(networks, (6668,))
-        if fallback.get("candidate_count"):
-            nmap_result = {
-                **nmap_result,
-                "success": True,
-                "fallback_tcp_scan": fallback,
-                "candidates": [
-                    {"ip": row["ip"], "mac": None, "ports": row.get("ports", [6668]), "source": "tcp_fallback_6668"}
-                    for row in fallback.get("candidates", [])
-                ],
-                "candidate_count": fallback.get("candidate_count", 0),
-            }
+    # Fast scanner path: TCP 6668 first. Nmap is optional/enrichment only,
+    # because Windows nmap can make the UI look frozen. Set MONIK_USE_NMAP=1
+    # when exact nmap output is required.
+    fallback = tcp_tuya_port_scan(networks, (6668,))
+    nmap_result = {
+        "success": bool(fallback.get("candidate_count")),
+        "commands": ["fast tcp scan 6668"],
+        "candidates": [
+            {"ip": row["ip"], "mac": None, "ports": row.get("ports", [6668]), "source": "fast_tcp_6668"}
+            for row in fallback.get("candidates", [])
+        ],
+        "candidate_count": fallback.get("candidate_count", 0),
+        "fallback_tcp_scan": fallback,
+        "commands_sent": False,
+        "installs": False,
+    }
+    if os.environ.get("MONIK_USE_NMAP") == "1":
+        nmap_try = nmap_6668_scan(networks)
+        if nmap_try.get("success"):
+            nmap_result = nmap_try
 
     print(
         "[LAN] Reading Tuya UDP 6666/6667/6668/7000 "
@@ -2429,8 +2435,9 @@ def _status_match_unresolved_lan(model, nmap_rows, matches, claimed_ids, claimed
             "external_ip_groups": [],
         }
 
-    timeout = max(0.4, float(os.environ.get("MONIK_STATUS_MATCH_TIMEOUT", "1.2")))
-    max_probes = max(1, int(os.environ.get("MONIK_STATUS_MATCH_MAX_PROBES", "96")))
+    timeout = max(0.25, float(os.environ.get("MONIK_STATUS_MATCH_TIMEOUT", "0.65")))
+    max_probes = max(1, int(os.environ.get("MONIK_STATUS_MATCH_MAX_PROBES", "32")))
+    worker_count = max(1, int(os.environ.get("MONIK_STATUS_MATCH_WORKERS", "8")))
     devices = [
         device for device in model.get("devices", [])
         if txt(device.get("tuya_id"))
@@ -2444,9 +2451,11 @@ def _status_match_unresolved_lan(model, nmap_rows, matches, claimed_ids, claimed
     ]
     open_ips = [ip for ip in open_ips if ip]
     external_groups = _external_ip_probe_groups(devices)
+    probe_log = []
+    probe_queue: queue.Queue[tuple[str, str, dict]] = queue.Queue()
+    state_lock = threading.Lock()
     attempts = 0
     added = 0
-    probe_log = []
 
     def candidate_batches():
         grouped_ids = set()
@@ -2460,28 +2469,41 @@ def _status_match_unresolved_lan(model, nmap_rows, matches, claimed_ids, claimed
             yield "remaining_json_devices_after_external_ip_groups", rest
 
     for ip in open_ips:
-        if ip in claimed_ips:
-            continue
         for batch_name, batch in candidate_batches():
-            matched = False
             for device in batch:
-                if attempts >= max_probes or ip in claimed_ips:
+                if probe_queue.qsize() >= max_probes:
                     break
-                device_id = txt(device.get("tuya_id"))
-                if not device_id or device_id in claimed_ids:
+                probe_queue.put((ip, batch_name, device))
+            if probe_queue.qsize() >= max_probes:
+                break
+        if probe_queue.qsize() >= max_probes:
+            break
+
+    def worker() -> None:
+        nonlocal attempts, added
+        while True:
+            try:
+                ip, batch_name, device = probe_queue.get_nowait()
+            except queue.Empty:
+                return
+            device_id = txt(device.get("tuya_id"))
+            with state_lock:
+                if not device_id or device_id in claimed_ids or ip in claimed_ips:
                     continue
                 attempts += 1
-                result = _status_probe_one(ip, device, timeout)
-                probe_log.append({
-                    "ip": ip,
-                    "device_id": device_id,
-                    "device_name": device.get("name"),
-                    "batch": batch_name,
-                    "success": bool(result.get("success")),
-                    "dp_overlap": result.get("dp_overlap", []),
-                    "error": result.get("error"),
-                })
-                if result.get("success"):
+            result = _status_probe_one(ip, device, timeout)
+            row = {
+                "ip": ip,
+                "device_id": device_id,
+                "device_name": device.get("name"),
+                "batch": batch_name,
+                "success": bool(result.get("success")),
+                "dp_overlap": result.get("dp_overlap", []),
+                "error": result.get("error"),
+            }
+            with state_lock:
+                probe_log.append(row)
+                if result.get("success") and device_id not in claimed_ids and ip not in claimed_ips:
                     claimed_ids.add(device_id)
                     claimed_ips.add(ip)
                     matches[device_id] = {
@@ -2493,10 +2515,19 @@ def _status_match_unresolved_lan(model, nmap_rows, matches, claimed_ids, claimed
                         "status_used": True,
                     }
                     added += 1
-                    matched = True
-                    break
-            if matched or attempts >= max_probes or ip in claimed_ips:
-                break
+
+    threads = [
+        threading.Thread(target=worker, daemon=True)
+        for _ in range(min(worker_count, max(1, probe_queue.qsize())))
+    ]
+    for thread in threads:
+        thread.start()
+    deadline = time.monotonic() + float(os.environ.get("MONIK_STATUS_MATCH_DEADLINE", "6.0"))
+    for thread in threads:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        thread.join(timeout=remaining)
 
     return {
         "added": added,
@@ -2504,11 +2535,14 @@ def _status_match_unresolved_lan(model, nmap_rows, matches, claimed_ids, claimed
         "enabled": True,
         "timeout_seconds": timeout,
         "max_probes": max_probes,
+        "workers": worker_count,
+        "deadline_seconds": float(os.environ.get("MONIK_STATUS_MATCH_DEADLINE", "6.0")),
         "external_ip_groups": [
             {"external_ip": ip, "device_count": len(rows)} for ip, rows in external_groups
         ],
         "probe_log": probe_log[:80],
     }
+
 
 def apply_arp(model):
     """
@@ -2536,20 +2570,26 @@ def apply_arp(model):
     udp_thread.start()
 
     networks = configured_scan_networks()
-    nmap_result = nmap_6668_scan(networks)
-    if not nmap_result.get("success"):
-        fallback = tcp_tuya_port_scan(networks, (6668,))
-        if fallback.get("candidate_count"):
-            nmap_result = {
-                **nmap_result,
-                "success": True,
-                "fallback_tcp_scan": fallback,
-                "candidates": [
-                    {"ip": row["ip"], "mac": None, "ports": row.get("ports", [6668]), "source": "tcp_fallback_6668"}
-                    for row in fallback.get("candidates", [])
-                ],
-                "candidate_count": fallback.get("candidate_count", 0),
-            }
+    # Fast scanner path: TCP 6668 first. Nmap is optional/enrichment only,
+    # because Windows nmap can make the UI look frozen. Set MONIK_USE_NMAP=1
+    # when exact nmap output is required.
+    fallback = tcp_tuya_port_scan(networks, (6668,))
+    nmap_result = {
+        "success": bool(fallback.get("candidate_count")),
+        "commands": ["fast tcp scan 6668"],
+        "candidates": [
+            {"ip": row["ip"], "mac": None, "ports": row.get("ports", [6668]), "source": "fast_tcp_6668"}
+            for row in fallback.get("candidates", [])
+        ],
+        "candidate_count": fallback.get("candidate_count", 0),
+        "fallback_tcp_scan": fallback,
+        "commands_sent": False,
+        "installs": False,
+    }
+    if os.environ.get("MONIK_USE_NMAP") == "1":
+        nmap_try = nmap_6668_scan(networks)
+        if nmap_try.get("success"):
+            nmap_result = nmap_try
     udp_thread.join(timeout=9.3)
 
     udp = udp_box.get("result") or {
@@ -2568,6 +2608,55 @@ def apply_arp(model):
     }
 
     devices = model.get("devices", [])
+    if not devices and nmap_rows:
+        model["source_name"] = model.get("source_name") or "LAN scanner only"
+        model["physical_device_count"] = len(nmap_rows)
+        model["logical_endpoint_count"] = 0
+        model["control_count"] = 0
+        model["global_warnings"] = [
+            "No JSON model is loaded; showing LAN-only Tuya 6668 candidates.",
+        ]
+        model["devices"] = [
+            {
+                "physical_id": "lan:" + row["ip"],
+                "tuya_id": None,
+                "name": "LAN Tuya candidate " + row["ip"],
+                "category": "lan-scan",
+                "product_id": None,
+                "product_name": None,
+                "manufacturer": None,
+                "model": None,
+                "online": None,
+                "mac": norm_mac(row.get("mac")),
+                "lan_ip": row["ip"],
+                "external_ip": None,
+                "has_local_key": False,
+                "local_key": None,
+                "protocol_version": "3.3",
+                "logical_endpoints": [],
+                "schema_channel_count": 0,
+                "schema_channel_count_sources": [],
+                "status": {},
+                "controls": [],
+                "coverage": {
+                    "records_found": 0,
+                    "tuya_schema_codes": 0,
+                    "dp_id_mappings": 0,
+                    "status_codes": 0,
+                    "yandex_logical_endpoints": 0,
+                    "controls_built": 0,
+                    "local_route_ready": 0,
+                    "tuya_cloud_route_ready": 0,
+                    "yandex_route_ready": 0,
+                },
+                "warnings": [
+                    "LAN scanner found open 6668, but no JSON identity/localKey is loaded for this IP.",
+                ],
+            }
+            for row in nmap_rows
+        ]
+        devices = model["devices"]
+
     indexes = _identity_indexes(devices)
 
     claimed_ids = set()
