@@ -1,0 +1,193 @@
+import { spawn } from 'node:child_process';
+
+const port = String(Number(process.env.PORT || 4173));
+const baseUrl = `http://127.0.0.1:${port}`;
+const server = spawn(process.execPath, ['src/server.js'], {
+  env: { ...process.env, PORT: port },
+  stdio: ['ignore', 'pipe', 'pipe'],
+});
+
+async function waitForServer() {
+  const deadline = Date.now() + 5000;
+  let lastError;
+
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`${baseUrl}/health`);
+      if (response.ok) return;
+    } catch (error) {
+      lastError = error;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+
+  throw lastError || new Error('Server did not become ready.');
+}
+
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+try {
+  await waitForServer();
+
+  const page = await fetch(baseUrl);
+  const html = await page.text();
+  assert(page.status === 200, `Expected page status 200, got ${page.status}`);
+  assert(html.includes('id="adbImportForm"'), 'Expected ADB import form on the test page.');
+  assert(html.includes('Вътре в MoniK app'), 'Expected integrated MoniK app wording.');
+  assert(html.includes('Tuya SDK login'), 'Expected explanation that login is in the MoniK app.');
+  assert(html.includes('Взимане от телефона с ADB'), 'Expected ADB phone bridge section.');
+
+  const wellKnownResponse = await fetch(`${baseUrl}/.well-known/oauth-authorization-server`);
+  const wellKnownPayload = await wellKnownResponse.json();
+  assert(wellKnownResponse.status === 200, `Expected OAuth metadata 200, got ${wellKnownResponse.status}`);
+  assert(wellKnownPayload.authorization_endpoint, 'Expected OAuth authorization endpoint.');
+
+  const devRedirectUri = 'http://localhost:4173/oauth/callback/dev';
+  const authorizePage = await fetch(`${baseUrl}/oauth/authorize?response_type=code&client_id=alice-dev-client&redirect_uri=${encodeURIComponent(devRedirectUri)}&state=smoke`);
+  const authorizeHtml = await authorizePage.text();
+  assert(authorizePage.status === 200, `Expected authorize page 200, got ${authorizePage.status}`);
+  assert(authorizeHtml.includes('MoniK account linking'), 'Expected OAuth link page.');
+
+  const authorizeSubmit = await fetch(`${baseUrl}/oauth/authorize`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      account: 'user@example.com',
+      client_id: 'alice-dev-client',
+      password: 'secret',
+      redirect_uri: devRedirectUri,
+      response_type: 'code',
+      state: 'smoke',
+    }),
+  });
+  assert(authorizeSubmit.status === 302, `Expected authorize redirect 302, got ${authorizeSubmit.status}`);
+  const redirectLocation = authorizeSubmit.headers.get('location');
+  const code = new URL(redirectLocation).searchParams.get('code');
+  assert(code, 'Expected authorization code.');
+
+  const tokenResponse = await fetch(`${baseUrl}/oauth/token`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: 'alice-dev-client',
+      client_secret: 'alice-dev-secret',
+      code,
+      grant_type: 'authorization_code',
+      redirect_uri: devRedirectUri,
+    }),
+  });
+  const tokenPayload = await tokenResponse.json();
+  assert(tokenResponse.status === 200, `Expected token response 200, got ${tokenResponse.status}`);
+  assert(tokenPayload.access_token, 'Expected access token.');
+
+  const accountResponse = await fetch(`${baseUrl}/api/monik/account`, {
+    headers: { authorization: `Bearer ${tokenPayload.access_token}` },
+  });
+  const accountPayload = await accountResponse.json();
+  assert(accountResponse.status === 200, `Expected account response 200, got ${accountResponse.status}`);
+  assert(accountPayload.account === 'user@example.com', `Expected linked account, got ${accountPayload.account}`);
+
+
+  const webScanResponse = await fetch(`${baseUrl}/api/monik/web-scan`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ scan: { limit: 2, timeoutMs: 25, concurrency: 2 } }),
+  });
+  const webScanPayload = await webScanResponse.json();
+  assert(webScanResponse.status === 200, `Expected web scan status 200, got ${webScanResponse.status}`);
+  assert(webScanPayload.readOnly === true, 'Expected web scanner to be read-only.');
+  assert(webScanPayload.writesPerformed === false, 'Expected web scanner to perform no writes.');
+  assert(Array.isArray(webScanPayload.localDevices), 'Expected local devices array.');
+  assert(Array.isArray(webScanPayload.localScan.discoveredHosts), 'Expected local IP/MAC scan host array.');
+
+
+  const yandexSchemaResponse = await fetch(`${baseUrl}/api/monik/yandex-schema`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ scan: { limit: 2, timeoutMs: 25, concurrency: 2 } }),
+  });
+  const yandexSchemaPayload = await yandexSchemaResponse.json();
+  assert(yandexSchemaResponse.status === 200, `Expected Yandex schema status 200, got ${yandexSchemaResponse.status}`);
+  assert(yandexSchemaPayload.readOnly === true, 'Expected Yandex schema builder to be read-only.');
+  assert(yandexSchemaPayload.commandsExecuted === false, 'Expected Yandex schema builder to execute no commands.');
+  assert(Array.isArray(yandexSchemaPayload.devices), 'Expected Yandex schema devices array.');
+
+
+  const fixtureYandexUrl = `data:application/json,${encodeURIComponent(JSON.stringify({ devices: [{ id: 'fixture-device', name: 'Fixture Lamp' }] }))}`;
+  const fixtureSchemaResponse = await fetch(`${baseUrl}/api/monik/yandex-schema`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ yandexUrl: fixtureYandexUrl, scan: { limit: 2, timeoutMs: 25, concurrency: 2 } }),
+  });
+  const fixtureSchemaPayload = await fixtureSchemaResponse.json();
+  assert(fixtureSchemaResponse.status === 200, `Expected fixture schema status 200, got ${fixtureSchemaResponse.status}`);
+  assert(fixtureSchemaPayload.devices.length === 1, 'Expected one fixture device.');
+  assert(fixtureSchemaPayload.devices[0].capabilities[0].testButtons.length >= 2, 'Expected ON/OFF JSON buttons for fixture device.');
+
+  const fixtureStratoUrl = `data:application/json,${encodeURIComponent(JSON.stringify({ devices: [{ id: 'strato-lamp-1', name: 'Smart Lamp Strato', localIp: '192.168.1.50', localKey: 'fixture-local-key' }] }))}`;
+  const stratoOnlySchemaResponse = await fetch(`${baseUrl}/api/monik/yandex-schema`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ stratoUrl: fixtureStratoUrl, scan: { limit: 2, timeoutMs: 25, concurrency: 2 } }),
+  });
+  const stratoOnlySchemaPayload = await stratoOnlySchemaResponse.json();
+  assert(stratoOnlySchemaResponse.status === 200, `Expected strato-only schema status 200, got ${stratoOnlySchemaResponse.status}`);
+  assert(stratoOnlySchemaPayload.devices.some((device) => device.id === 'strato-lamp-1'), 'Expected Strato-only local device in schema list.');
+  assert(stratoOnlySchemaPayload.devices.find((device) => device.id === 'strato-lamp-1').localCommandJson.length >= 1, 'Expected local ON/OFF command JSON for Strato-only device.');
+
+
+  const missingYandexCommandResponse = await fetch(`${baseUrl}/api/monik/yandex-command`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ deviceId: 'fixture-device', action: { type: 'devices.capabilities.on_off', state: { instance: 'on', value: true } } }),
+  });
+  const missingYandexCommandPayload = await missingYandexCommandResponse.json();
+  assert(missingYandexCommandResponse.status === 400, `Expected missing Yandex command config status 400, got ${missingYandexCommandResponse.status}`);
+  assert(missingYandexCommandPayload.commandSent === false, 'Expected Yandex command not to be sent without action URL.');
+
+  const missingLocalCommandResponse = await fetch(`${baseUrl}/api/monik/local-command`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ protocol: 'tuya-local', ip: '127.0.0.1', localKey: 'abc', dps: { 1: true } }),
+  });
+  const missingLocalCommandPayload = await missingLocalCommandResponse.json();
+  assert(missingLocalCommandResponse.status === 400, `Expected missing local command config status 400, got ${missingLocalCommandResponse.status}`);
+  assert(missingLocalCommandPayload.commandSent === false, 'Expected local command not to be sent without local command URL.');
+
+  const tokenMissingConfigResponse = await fetch(`${baseUrl}/api/monik/token/request`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ account: 'user@example.com' }),
+  });
+  assert(tokenMissingConfigResponse.status === 400, `Expected token missing config status 400, got ${tokenMissingConfigResponse.status}`);
+
+  const logcatResponse = await fetch(`${baseUrl}/api/monik/adb/logcat?lines=50&filter=tuya`);
+  assert([200, 400].includes(logcatResponse.status), `Expected logcat status 200 or 400, got ${logcatResponse.status}`);
+
+  const adbStatusResponse = await fetch(`${baseUrl}/api/monik/adb/status`);
+  const adbStatusPayload = await adbStatusResponse.json();
+  assert(adbStatusResponse.status === 200, `Expected ADB status 200, got ${adbStatusResponse.status}`);
+  assert('adbAvailable' in adbStatusPayload, 'Expected adbAvailable field.');
+
+  const importResponse = await fetch(`${baseUrl}/api/monik/devices/import`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ devices: [{ devId: 'real-device-id', name: 'Lamp', online: true }] }),
+  });
+  const importPayload = await importResponse.json();
+  assert(importResponse.status === 200, `Expected import status 200, got ${importResponse.status}`);
+  assert(importPayload.imported === true, 'Expected imported=true.');
+  assert(importPayload.importedDevices === 1, `Expected one imported device, got ${importPayload.importedDevices}`);
+
+  const devices = await fetch(`${baseUrl}/api/monik/devices`);
+  const devicesPayload = await devices.json();
+  assert(devicesPayload.importedDevices === 1, 'Expected stored imported device.');
+
+  console.log(`OK: SDK bridge works at ${baseUrl}`);
+} finally {
+  server.kill();
+}

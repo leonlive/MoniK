@@ -1,1 +1,458 @@
-# MoniK
+# MoniK Tuya SDK Bridge
+
+Корекция: махнат е Tuya Cloud developer моделът от MoniK server-а. Няма `TUYA_ACCESS_ID`, няма `TUYA_ACCESS_SECRET`, няма `MONIK_TUYA_ACCESS_ID`, няма server-side Tuya Cloud SDK connector.
+
+Текущият поток е за случая, който искаш: Android/iOS Tuya SDK клиентът, с вече наличния SDK/manifest/app setup, взема устройствата чрез съществуващ Tuya user акаунт и ги подава към MoniK server. MoniK server само приема и пази устройствата.
+
+## Как работи
+
+1. Потребителят влиза в Tuya през mobile SDK клиента.
+2. Mobile SDK клиентът взема реалните устройства от Tuya акаунта.
+3. Mobile SDK клиентът праща устройствата към MoniK server:
+
+```http
+POST /api/monik/devices/import
+```
+
+4. MoniK server връща колко устройства са импортирани и ги държи за проверка през:
+
+```http
+GET /api/monik/devices
+```
+
+
+
+
+
+
+
+## Две MoniK Android папки
+
+До пълното изчистване на app-а приемаме тези две папки:
+
+- оригинал: `C:\Users\Public\MoniK\smart-home-monik`
+- последна SDK 7.5+ update версия: `C:\Users\Public\MoniK\smart-home-monik_sdk75+e`
+
+За тестове и backup по подразбиране ползваме **последната update версия** `smart-home-monik_sdk75+e`. Оригиналът се пази като reference/backup.
+
+Backup команда за двете папки:
+
+```powershell
+npm run backup:android
+```
+
+Ако искаш ръчно да посочиш пътищата:
+
+```powershell
+npm run backup:android -- -ProjectRoot "C:\Users\Public\MoniK\smart-home-monik_sdk75+e" -OriginalProjectRoot "C:\Users\Public\MoniK\smart-home-monik"
+```
+
+
+## Account linking като Алиса/Yandex/Alexa
+
+Добавен е OAuth2 authorization-code skeleton за production посоката, вместо ADB да е основният flow.
+
+Endpoints:
+
+```http
+GET /.well-known/oauth-authorization-server
+GET /oauth/authorize
+POST /oauth/authorize
+POST /oauth/token
+GET /api/monik/account
+```
+
+Dev config:
+
+```bash
+MONIK_OAUTH_CLIENT_ID=alice-dev-client
+MONIK_OAUTH_CLIENT_SECRET=alice-dev-secret
+MONIK_OAUTH_REDIRECT_URI=http://localhost:4173/oauth/callback/dev
+```
+
+Примерен authorize URL:
+
+```text
+http://localhost:4173/oauth/authorize?response_type=code&client_id=alice-dev-client&redirect_uri=http%3A%2F%2Flocalhost%3A4173%2Foauth%2Fcallback%2Fdev&state=test
+```
+
+Това е базата за account-linking flow: authorize → code → token → Bearer access token. ADB остава само debug/log/import helper.
+
+
+## Yandex RAW schema builder — без реални команди
+
+Endpoint:
+
+```http
+POST /api/monik/yandex-schema
+```
+
+Какво прави:
+
+1. Прави read-only GET към `MONIK_YANDEX_DEVICES_URL`, ако е конфигуриран.
+2. Връща `yandexRaw`, за да видим целия оригинален JSON от Yandex.
+3. За всяко устройство строи схема от `capabilities` и `properties`.
+4. Генерира JSON preview бутони и отделни реални `ИЗПЪЛНИ` бутони за ON/OFF, brightness/range, mode, toggle и color controls според RAW capability схемата.
+5. Генерира local command JSON шаблони и реални `ИЗПЪЛНИ Local` бутони за Tuya local ON/OFF по канали, ако има local IP/key match или LAN host.
+6. При построяване на схемата не изпълнява device commands — връща `commandsExecuted:false`. Команда се праща само когато потребителят натисне `ИЗПЪЛНИ`.
+7. Сортира локалните устройства първи, когато има local IP/key/port match.
+
+
+Командните бутони използват отделни endpoint-и:
+
+```http
+POST /api/monik/yandex-command
+POST /api/monik/local-command
+```
+
+За реално изпращане задай:
+
+```bash
+MONIK_YANDEX_ACTION_URL=https://...
+MONIK_LOCAL_COMMAND_URL=https://...
+```
+
+Ако тези URL-и не са зададени, бутоните пак работят като UI, но server-ът връща `commandSent:false` и не изпраща нищо.
+
+Ако Yandex достъпът още не е конфигуриран, endpoint-ът пак връща LAN scan данните, но `devices` от Yandex ще е празен.
+
+## Read-only WEB scanner: Yandex + Strato + LAN 6668
+
+Това е само web/read-only проверка. Не пише към Strato, не пише към телефона и не променя Android проекта.
+
+Endpoint:
+
+```http
+POST /api/monik/web-scan
+```
+
+Какво прави:
+
+1. Първо сканира локалната мрежа самостоятелно — работи и без Yandex, Tuya или MoniK достъп.
+2. Връща намерените LAN IP адреси и MAC адреси от ARP/neighbour table, плюс дали порт `6668` е отворен.
+3. Чете fresh Yandex snapshot от `MONIK_YANDEX_DEVICES_URL`, ако е конфигуриран.
+4. Чете последния Strato snapshot от `MONIK_STRATO_DEVICES_URL`, ако е конфигуриран.
+5. Ако има Strato snapshot, добавя `localKey`, `device id` и ON/OFF command descriptor към съответното локално IP.
+6. Ако Yandex refresh върне по-малко устройства, не трие нищо — показва Strato snapshot-а и маркира `missingInYandexRefresh`.
+
+Config:
+
+```bash
+MONIK_YANDEX_DEVICES_URL=https://example.yandex-or-monik/devices
+MONIK_YANDEX_ACCESS_TOKEN=
+MONIK_STRATO_DEVICES_URL=https://example.strato-or-monik/devices
+MONIK_STRATO_ACCESS_TOKEN=
+MONIK_STRATO_EXTRA_HEADERS=
+MONIK_LOCAL_SCAN_PORT=6668
+MONIK_LOCAL_SCAN_TIMEOUT_MS=350
+MONIK_LOCAL_PING_TIMEOUT_MS=250
+MONIK_LOCAL_SCAN_CIDR=
+```
+
+Важно: IP/MAC scanner-ът работи и когато нямаме реален Yandex/Strato URL или token. Тогава Yandex/Strato частите казват `configured:false`, но `localScan.discoveredHosts` пак показва намерените IP/MAC записи от локалната мрежа.
+
+## ADB път, когато SDK е в друг проект/папка
+
+Може. Не е нужно да си в Android проекта, важното е `adb.exe` да е в PATH или да зададем `ADB_PATH`. За твоята структура използвай:
+
+```powershell
+set "ANDROID_HOME=C:\Users\Public"
+set "ANDROID_SDK_ROOT=C:\Users\Public"
+set "ADB_PATH=C:\Users\Public\platform-tools\adb.exe"
+set "PATH=C:\Users\Public\platform-tools;C:\Users\Public\emulator;C:\Users\Public\cmdline-tools\latest\bin;%PATH%"
+```
+
+После от папката на този server:
+
+```powershell
+cd /d C:\Users\Public\github\leonlive-MoniK\MoniK
+npm start
+```
+
+За log тест с готовия script:
+
+```powershell
+npm run log:windows -- -AndroidRoot "C:\Users\Public"
+```
+
+или директно:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\collect-login-log-windows.ps1 -AndroidRoot "C:\Users\Public"
+```
+
+Текущите ADB тестове не променят `App.tsx` или Kotlin/Java файлове. Те правят само:
+
+- `adb devices` — чете devices;
+- `adb logcat -c` — чисти Android log buffer;
+- `adb logcat -d` — чете log;
+- `adb shell run-as ... cat ...` — чете export файл от app storage.
+
+Ако искаш backup преди всеки тест на Android проекта:
+
+```powershell
+npm run backup:android -- -ProjectRoot "C:\Users\Public\MoniK\smart-home-monik_sdk75+e" -OriginalProjectRoot "C:\Users\Public\MoniK\smart-home-monik"
+```
+
+## Хибриден тест през компютър + телефон
+
+Това е най-бързият тест за login проблема:
+
+1. Свържи телефона с USB.
+2. Разреши USB debugging.
+3. Стартирай MoniK server: `npm start`.
+4. В browser отвори `http://localhost:4173`.
+5. Натисни **Изчисти logcat**.
+6. На телефона натисни MoniK login/import бутона.
+7. В browser натисни **Прочети login log**.
+
+Същото може и директно от PowerShell:
+
+```powershell
+npm run log:windows
+```
+
+Script-ът прави `adb devices`, `adb logcat -c`, чака да натиснеш login на телефона, после записва `monik-login.log` и филтрира важните редове.
+
+## MoniK server token request с key файлове
+
+Да: ако тези файлове са достъпът до MoniK server-а, `.env` трябва да сочи имената/пътищата им, а програмата трябва да ги прочете при заявката. Добавен е endpoint:
+
+```http
+POST /api/monik/token/request
+```
+
+Конфигурация:
+
+```bash
+MONIK_SERVER_TOKEN_URL=https://your-monik-server.example/api/token
+MONIK_TUYA_ACCESS_ID=monik_strato_ed25519
+MONIK_TUYA_PRIVATE_KEY_PATH=/opt/monik-yandex/secure/keys/monik_strato_ed25519
+MONIK_TUYA_PUBLIC_KEY_PATH=/opt/monik-yandex/secure/keys/monik_strato_ed25519.pub
+```
+
+Важно: `.env` пази само имена/пътища. Самите ключове не се commit-ват. При заявка server-ът чете private/public key файловете, подписва payload-а и го изпраща към `MONIK_SERVER_TOKEN_URL`. Ако `MONIK_SERVER_TOKEN_URL` не е зададен, endpoint-ът връща signed request обекта без да го изпраща.
+
+## Как е вързано с телефона?
+
+Не чрез pairing и не като отделено приложение. Този Node server вече работи като ADB bridge към инсталирания MoniK app на телефона.
+
+1. Телефонът е вързан с USB към компютъра.
+2. USB debugging е разрешен.
+3. MoniK Android app е инсталиран и прави Tuya SDK login вътре в приложението.
+4. MoniK app записва devices export JSON в app storage, например `files/monik_tuya_devices.json`.
+5. Node server изпълнява:
+
+```bash
+adb shell run-as com.monik.app cat files/monik_tuya_devices.json
+```
+
+6. Прочетеният JSON се импортва в MoniK server.
+
+Endpoint за автоматично ADB взимане:
+
+```http
+POST /api/monik/adb/import
+```
+
+Body:
+
+```json
+{
+  "packageName": "com.monik.app",
+  "deviceFile": "files/monik_tuya_devices.json"
+}
+```
+
+ADB статус:
+
+```http
+GET /api/monik/adb/status
+```
+
+Конфигурация през env, ако package/file са различни:
+
+```bash
+MONIK_ANDROID_PACKAGE=com.monik.app
+MONIK_TUYA_EXPORT_FILE=files/monik_tuya_devices.json
+```
+
+## Къде се въвеждат email и парола?
+
+Не в тази browser страница. Email/парола трябва да се въвеждат в MoniK Android/iOS приложението, където е Tuya mobile SDK и manifest setup-ът.
+
+Този Node server е само приемник:
+
+1. MoniK app показва Tuya login screen.
+2. Tuya mobile SDK връща homes/devices в app-а.
+3. App-ът праща реалните устройства към `POST /api/monik/devices/import`.
+4. Тази browser страница е само тестов начин ръчно да симулираш стъпка 3 с JSON payload.
+
+Файлове като private key/public key, `.pem`, `.key`, `.pub`, `.jks`, `.keystore` не се ползват от този Node server и не трябва да се commit-ват. Добавени са в `.gitignore`.
+
+## Локален тест на server-а
+
+```bash
+npm install
+npm start
+```
+
+Отвори:
+
+```text
+http://localhost:4173
+```
+
+Тест страницата не прави fake Tuya login и не иска developer credentials. Тя служи да подадеш JSON payload, какъвто Android SDK клиентът трябва да изпрати към MoniK.
+
+
+## Автоматичен Windows старт
+
+За да не натискаш стъпките една по една, добавен е PowerShell script:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start-monik-windows.ps1
+```
+
+Той автоматично:
+
+1. проверява `node -v` и `npm -v`;
+2. пуска `npm install`;
+3. пуска `npm run check`;
+4. пуска `npm run test:page`;
+5. отваря `http://localhost:4173`;
+6. стартира server-а с `npm start`.
+
+Ако repo-то вече е git clone и искаш script-ът да опита update преди старта:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start-monik-windows.ps1 -Update
+```
+
+Ако GitHub Desktop/Git показва local inconsistencies и **нямаш локални промени за пазене**, може да пуснеш автоматично чистене + update:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start-monik-windows.ps1 -Update -ResetLocalChanges
+```
+
+Внимание: `-ResetLocalChanges` изпълнява `git reset --hard` и `git clean -fd`, т.е. трие локални неприбрани промени.
+
+## Windows ред
+
+```powershell
+git clone <REPO_URL>
+cd MoniK
+npm install
+npm start
+```
+
+Или ZIP:
+
+```powershell
+npm install
+npm start
+```
+
+После отвори <http://localhost:4173>.
+
+## API
+
+### `POST /api/monik/devices/import`
+
+Request от mobile SDK клиента:
+
+```json
+{
+  "devices": [
+    {
+      "devId": "real-device-id",
+      "name": "Lamp",
+      "productId": "product-id",
+      "category": "dj",
+      "online": true
+    }
+  ]
+}
+```
+
+Response:
+
+```json
+{
+  "imported": true,
+  "importedDevices": 1,
+  "lastImport": "2026-06-26T00:00:00.000Z",
+  "devices": []
+}
+```
+
+### `GET /api/monik/devices`
+
+Връща последно импортираните устройства.
+
+
+## Ако виждаш `Cannot find package @tuya/tuya-connector-nodejs`
+
+Това означава, че на компютъра ти още се стартира стара версия на `src/server.js`, която import-ва стария cloud connector `src/tuyaClient.js`. В последната версия server-ът вече не използва този пакет.
+
+Направи едно от двете:
+
+```powershell
+git pull
+npm install
+npm start
+```
+
+или, ако си със ZIP, изтрий старата папка `MoniK`, свали ZIP наново и пусни:
+
+```powershell
+npm install
+npm start
+```
+
+Добавен е и compatibility `src/tuyaClient.js` файл без външни зависимости, за да не пада Node с `ERR_MODULE_NOT_FOUND`, ако някъде остане стар import.
+
+## Проверки
+
+```bash
+npm run check
+npm run test:page
+npm audit --omit=dev
+```
+
+Очаквано:
+
+```text
+OK: SDK bridge works at http://127.0.0.1:4173
+```
+
+## Proven Python LAN/Tuya builder
+
+Добавен е standalone Python builder от branch `codex/-tuya`:
+
+```bat
+START_MONIK_V6_PROVEN_CLOUD_MULTI_IDENTITY_LAN.bat
+```
+
+или директно:
+
+```bat
+py -3 MONIK_V6_PROVEN_CLOUD_MULTI_IDENTITY_LAN.py
+```
+
+Промени спрямо качения Python файл:
+
+- local scanner-ът вече не е заключен към `192.168.178.0/24`;
+- ако зададеш `MONIK_SCAN_CIDR`, сканира тази мрежа, иначе взима активните private `/24` мрежи от Windows/host-а;
+- `nmap` timeout-ът се управлява с `MONIK_NMAP_TIMEOUT` и default е 45 секунди, за да не виси дълго;
+- ако `nmap` липсва или не върне резултат, има fallback TCP scan на порт `6668`;
+- сканирането не праща Tuya DP/control команди — само identity/порт/ARP/status info;
+- командите към Tuya/local остават само след ръчно натискане на съответния бутон.
+
+Пример:
+
+```bat
+set MONIK_SCAN_CIDR=192.168.178.0/24
+set MONIK_NMAP_TIMEOUT=45
+START_MONIK_V6_PROVEN_CLOUD_MULTI_IDENTITY_LAN.bat
+```
