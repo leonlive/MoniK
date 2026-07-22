@@ -552,18 +552,44 @@ export async function runYandexRawSchemaScan(options = {}) {
     };
   }).sort((left, right) => Number(right.isLocalFirst) - Number(left.isLocalFirst));
 
+  const localOnlyDevices = scan.localDevices
+    .filter((device) => !schemaDevices.some((schemaDevice) => schemaDevice.id === device.id || schemaDevice.local?.localIp === device.localIp))
+    .map((device) => {
+      const localMatch = {
+        localIp: device.localIp,
+        mac: device.mac,
+        port6668Open: device.port6668Open,
+        localKey: device.localKey,
+      };
+
+      return {
+        id: device.id,
+        name: device.name,
+        type: device.category || 'strato/local',
+        isLocalFirst: true,
+        local: localMatch,
+        capabilities: [fallbackOnOffCapability()],
+        properties: [],
+        channelCount: 1,
+        localCommandJson: buildLocalCommandTemplates({ device, localMatch, channelCount: 1 }),
+        raw: device.raw || device,
+      };
+    });
+
+  const knownLocalIps = new Set([...schemaDevices, ...localOnlyDevices].map((device) => device.local?.localIp).filter(Boolean));
   const localOnlyHosts = scan.localScan.discoveredHosts
-    .filter((host) => !schemaDevices.some((device) => device.local?.localIp === host.ip))
+    .filter((host) => !knownLocalIps.has(host.ip))
     .map((host) => ({
       id: `lan:${host.ip}`,
       name: `LAN ${host.ip}`,
+      type: 'lan/port-scan',
       isLocalFirst: true,
       local: { localIp: host.ip, mac: host.mac, port6668Open: host.port6668Open, localKey: null },
       capabilities: [fallbackOnOffCapability()],
       properties: [],
       channelCount: 1,
       localCommandJson: buildLocalHostCommandTemplates(host, 1),
-      raw: null,
+      raw: host,
     }));
 
   return {
@@ -573,7 +599,7 @@ export async function runYandexRawSchemaScan(options = {}) {
     yandexConfigured: scan.yandex.configured,
     yandexRaw: yandexPayload,
     localScan: scan.localScan,
-    devices: [...localOnlyHosts, ...schemaDevices],
+    devices: [...localOnlyDevices, ...localOnlyHosts, ...schemaDevices],
     notes: [
       'RAW Yandex read is GET only.',
       'Schema buttons are JSON previews only; this endpoint does not send device commands.',

@@ -285,3 +285,32 @@ pre.is-success { color: #bbf7d0 !important; }
 }
 
 .real-command:hover { background: #15803d; }
+
+.scan-summary {
+  border: 1px solid #bbf7d0;
+  border-radius: 14px;
+  background: #f0fdf4;
+  color: #14532d;
+  padding: 12px 14px;
+  font-weight: 800;
+}
+
+.scan-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  background: #fff;
+}
+
+.scan-table th,
+.scan-table td {
+  border: 1px solid #dbeafe;
+  padding: 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.scan-table th {
+  background: #eff6ff;
+  color: #1e3a8a;
+}

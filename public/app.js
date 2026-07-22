@@ -107,6 +107,75 @@ function renderSchema(payload) {
   });
 }
 
+function renderWebScan(payload) {
+  const hosts = payload.localScan?.discoveredHosts || [];
+  const devices = payload.localDevices || [];
+  const hostRows = hosts.map((host) => `
+    <tr>
+      <td><code>${escapeHtml(host.ip)}</code></td>
+      <td>${escapeHtml(host.mac || 'няма MAC от ARP')}</td>
+      <td>${host.port6668Open ? '<span class="is-success">OPEN</span>' : '<span class="is-error">closed/unknown</span>'}</td>
+    </tr>
+  `).join('');
+  const deviceCards = devices.map((device) => {
+    const localKeyText = device.localKey ? 'има local key от snapshot' : 'няма local key — ще го поиска ръчно';
+    const onCommand = device.control?.on || {
+      protocol: 'tuya-local',
+      ip: device.localIp,
+      mac: device.mac,
+      port: payload.localScan?.port || 6668,
+      deviceId: device.id,
+      localKey: '<въведи-local-key-ръчно>',
+      dps: { 1: true },
+    };
+    const offCommand = device.control?.off || { ...onCommand, dps: { 1: false } };
+
+    return `
+      <article class="schema-card local-first">
+        <h3>${escapeHtml(device.name)} <span>LOCAL</span></h3>
+        <p><strong>ID:</strong> <code>${escapeHtml(device.id)}</code></p>
+        <p><strong>IP:</strong> <code>${escapeHtml(device.localIp || '-')}</code> · <strong>MAC:</strong> ${escapeHtml(device.mac || 'няма')}</p>
+        <p><strong>6668:</strong> ${device.port6668Open ? 'open' : 'closed/unknown'} · <strong>Key:</strong> ${escapeHtml(localKeyText)}</p>
+        <div class="button-row">
+          <button class="secondary-button json-preview" type="button" data-json="${escapeHtml(JSON.stringify(onCommand, null, 2))}">Local ON JSON</button>
+          <button class="real-command local-command" type="button" data-json="${escapeHtml(JSON.stringify(onCommand))}">ИЗПЪЛНИ Local ON</button>
+          <button class="secondary-button json-preview" type="button" data-json="${escapeHtml(JSON.stringify(offCommand, null, 2))}">Local OFF JSON</button>
+          <button class="real-command local-command" type="button" data-json="${escapeHtml(JSON.stringify(offCommand))}">ИЗПЪЛНИ Local OFF</button>
+        </div>
+        <details><summary>RAW local device</summary><pre>${escapeHtml(JSON.stringify(device, null, 2))}</pre></details>
+      </article>
+    `;
+  }).join('');
+
+  schemaTable.innerHTML = `
+    <div class="scan-summary">
+      <strong>LAN scan:</strong>
+      ${escapeHtml(payload.localScan?.scannedHosts || 0)} hosts ·
+      ${escapeHtml(hosts.length)} IP/MAC rows ·
+      ${escapeHtml(hosts.filter((host) => host.port6668Open).length)} hosts with 6668 open ·
+      ${escapeHtml(devices.length)} mapped local devices
+    </div>
+    ${deviceCards || '<p class="is-error">Няма mapped local devices от Strato/Yandex snapshot. По-долу показвам суровите IP/MAC hosts от LAN scan.</p>'}
+    <details open>
+      <summary>IP + MAC таблица от локалния scanner</summary>
+      <table class="scan-table">
+        <thead><tr><th>IP</th><th>MAC</th><th>Tuya 6668</th></tr></thead>
+        <tbody>${hostRows || '<tr><td colspan="3">Няма ARP/6668 резултати. Задай MONIK_LOCAL_SCAN_CIDR към правилната LAN мрежа.</td></tr>'}</tbody>
+      </table>
+    </details>
+  `;
+
+  schemaTable.querySelectorAll('.json-preview').forEach((button) => {
+    button.addEventListener('click', () => showResult(button.dataset.json, 'is-success'));
+  });
+  schemaTable.querySelectorAll('.local-command').forEach((button) => {
+    button.addEventListener('click', () => {
+      const command = commandWithManualLocalKey(JSON.parse(button.dataset.json));
+      if (command) sendCommand('/api/monik/local-command', command);
+    });
+  });
+}
+
 function showResult(payload, state = '') {
   resultBox.className = state;
   resultBox.textContent = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
@@ -222,6 +291,7 @@ buildYandexSchemaButton.addEventListener('click', async () => {
 
 runWebScanButton.addEventListener('click', async () => {
   runWebScanButton.disabled = true;
+  schemaTable.innerHTML = '<p>Сканирам LAN + чета snapshot-и read-only...</p>';
   showResult('Read-only WEB scan: Yandex + Strato + LAN 6668...', '');
 
   try {
@@ -231,8 +301,10 @@ runWebScanButton.addEventListener('click', async () => {
       body: JSON.stringify({}),
     });
     const payload = await response.json();
+    renderWebScan(payload);
     showResult(payload, response.ok ? 'is-success' : 'is-error');
   } catch (error) {
+    schemaTable.innerHTML = `<p class="is-error">${escapeHtml(error.message)}</p>`;
     showResult({ readOnly: true, writesPerformed: false, error: error.message }, 'is-error');
   } finally {
     runWebScanButton.disabled = false;

@@ -128,6 +128,17 @@ try {
   assert(fixtureSchemaPayload.devices.length === 1, 'Expected one fixture device.');
   assert(fixtureSchemaPayload.devices[0].capabilities[0].testButtons.length >= 2, 'Expected ON/OFF JSON buttons for fixture device.');
 
+  const fixtureStratoUrl = `data:application/json,${encodeURIComponent(JSON.stringify({ devices: [{ id: 'strato-lamp-1', name: 'Smart Lamp Strato', localIp: '192.168.1.50', localKey: 'fixture-local-key' }] }))}`;
+  const stratoOnlySchemaResponse = await fetch(`${baseUrl}/api/monik/yandex-schema`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ stratoUrl: fixtureStratoUrl, scan: { limit: 2, timeoutMs: 25, concurrency: 2 } }),
+  });
+  const stratoOnlySchemaPayload = await stratoOnlySchemaResponse.json();
+  assert(stratoOnlySchemaResponse.status === 200, `Expected strato-only schema status 200, got ${stratoOnlySchemaResponse.status}`);
+  assert(stratoOnlySchemaPayload.devices.some((device) => device.id === 'strato-lamp-1'), 'Expected Strato-only local device in schema list.');
+  assert(stratoOnlySchemaPayload.devices.find((device) => device.id === 'strato-lamp-1').localCommandJson.length >= 1, 'Expected local ON/OFF command JSON for Strato-only device.');
+
 
   const missingYandexCommandResponse = await fetch(`${baseUrl}/api/monik/yandex-command`, {
     method: 'POST',
