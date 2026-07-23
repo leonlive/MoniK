@@ -2303,7 +2303,7 @@ def _apply_lan_matches(model, nmap_rows, matches, source):
     model["lan_scan"] = {
         **model.get("lan_scan", {}),
         "success": bool(nmap_rows),
-        "command": " | ".join(nmap_result.get("commands", [])) or "tcp fallback scan 6668",
+        "command": model.get("lan_scan", {}).get("command") or source or "fast tcp scan 6668",
         "nmap_candidates": nmap_rows,
         "open_6668_count": len(nmap_by_ip),
         "current_lan_tuya_hosts": len(nmap_by_ip),
@@ -2606,6 +2606,7 @@ def apply_arp(model):
         private_ip(row.get("ip")): row
         for row in nmap_rows
     }
+    model.setdefault("lan_scan", {})["command"] = " | ".join(nmap_result.get("commands", [])) or "fast tcp scan 6668"
 
     devices = model.get("devices", [])
     if not devices and nmap_rows:
