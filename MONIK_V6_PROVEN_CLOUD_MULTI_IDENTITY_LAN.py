@@ -1105,6 +1105,75 @@ def merge_tuya_account(model: dict, account: dict) -> dict:
     return model
 
 
+def preserve_existing_local_data(model: dict, previous_model: dict | None) -> dict:
+    """
+    Keep proven local/LAN control fields when a newly loaded JSON snapshot omits
+    them. New Tuya/Yandex/account JSON may add missing data, but it must not
+    erase local_key, LAN IP/MAC or protocol data that already worked locally.
+    """
+    if not isinstance(previous_model, dict):
+        return model
+
+    previous_by_key: dict[str, dict] = {}
+    for device in previous_model.get("devices", []):
+        for key in (
+            txt(device.get("tuya_id")),
+            txt(device.get("physical_id")),
+            txt(device.get("name")).lower(),
+        ):
+            if key:
+                previous_by_key.setdefault(key, device)
+
+    preserved_fields = (
+        "local_key",
+        "lan_ip",
+        "mac",
+        "protocol_version",
+        "current_lan_match",
+        "same_external_ip_group",
+        "lan_discovery",
+        "local_status_once",
+    )
+
+    for device in model.get("devices", []):
+        previous = None
+        for key in (
+            txt(device.get("tuya_id")),
+            txt(device.get("physical_id")),
+            txt(device.get("name")).lower(),
+        ):
+            previous = previous_by_key.get(key)
+            if previous:
+                break
+        if not previous:
+            continue
+
+        kept = []
+        for field in preserved_fields:
+            if device.get(field) in (None, "", {}, []):
+                old_value = previous.get(field)
+                if old_value not in (None, "", {}, []):
+                    device[field] = old_value
+                    kept.append(field)
+
+        if device.get("local_key"):
+            device["has_local_key"] = True
+            for control in device.get("controls", []):
+                routes = control.setdefault("routes", {})
+                if txt(control.get("dp_id") or control.get("local_dp") or control.get("code")):
+                    routes["local"] = bool(device.get("lan_ip") and device.get("local_key"))
+
+        if kept:
+            warnings = device.setdefault("warnings", [])
+            warnings.append(
+                "Preserved local LAN data from the previous model: "
+                + ", ".join(sorted(set(kept)))
+            )
+
+    _recount_model(model)
+    return model
+
+
 def public_model(model: dict) -> dict:
     copy = json.loads(json.dumps(model, ensure_ascii=False))
     for device in copy.get("devices", []): device.pop("local_key", None)
@@ -1416,6 +1485,20 @@ def configured_scan_networks() -> list[ipaddress.IPv4Network]:
     return sorted(set(networks or current_private_networks()), key=str)
 
 
+
+
+def tuya_tcp_scan_ports() -> tuple[int, ...]:
+    raw = os.environ.get("MONIK_TUYA_SCAN_PORTS", "6667,6668,6669,7000")
+    ports = []
+    for part in raw.split(","):
+        try:
+            port = int(part.strip())
+        except Exception:
+            continue
+        if 1 <= port <= 65535 and port not in ports:
+            ports.append(port)
+    return tuple(ports or [6668])
+
 def normalize_tuya_scan_result(result: Any) -> list[dict]:
     """
     Keep every Tuya UDP identity row with a private IP and at least one
@@ -1703,14 +1786,16 @@ print(
 
 def tcp_tuya_port_scan(
     networks: list[ipaddress.IPv4Network],
-    ports: tuple[int, ...] = (6668, 6667),
+    ports: tuple[int, ...] | None = None,
 ) -> dict:
     """
-    Fast bounded TCP scan of Tuya ports 6668 and 6667.
+    Fast bounded TCP scan of Tuya LAN ports. Defaults are 6667, 6668,
+    6669 and 7000; override with MONIK_TUYA_SCAN_PORTS.
 
     Connecting to each address also refreshes the Windows ARP table.
     No Tuya control command or DP command is sent.
     """
+    ports = ports or tuya_tcp_scan_ports()
     hosts = []
     for network in networks:
         hosts.extend(str(host) for host in network.hosts())
@@ -1961,21 +2046,22 @@ def tinytuya_lan_scan() -> dict:
     """
     LAN discovery order:
 
-      1. exact requested nmap command for every open TCP 6668 host;
+      1. exact requested nmap/fast TCP scan for every open Tuya LAN port host;
       2. Tuya UDP 6666/6667/6668/7000 only for exact deviceId/IP metadata;
       3. the device model is then built from the selected JSON and matched
          against the nmap addresses.
     """
     networks = configured_scan_networks()
-    # Fast scanner path: TCP 6668 first. Nmap is optional/enrichment only,
+    scan_ports = tuya_tcp_scan_ports()
+    # Fast scanner path: configured Tuya TCP ports first. Nmap is optional/enrichment only,
     # because Windows nmap can make the UI look frozen. Set MONIK_USE_NMAP=1
     # when exact nmap output is required.
-    fallback = tcp_tuya_port_scan(networks, (6668,))
+    fallback = tcp_tuya_port_scan(networks, scan_ports)
     nmap_result = {
         "success": bool(fallback.get("candidate_count")),
-        "commands": ["fast tcp scan 6668"],
+        "commands": [f"fast tcp scan {','.join(str(port) for port in scan_ports)}"],
         "candidates": [
-            {"ip": row["ip"], "mac": None, "ports": row.get("ports", [6668]), "source": "fast_tcp_6668"}
+            {"ip": row["ip"], "mac": None, "ports": row.get("ports", list(scan_ports)), "source": "fast_tcp_tuya_ports"}
             for row in fallback.get("candidates", [])
         ],
         "candidate_count": fallback.get("candidate_count", 0),
@@ -2195,8 +2281,11 @@ def _apply_lan_matches(model, nmap_rows, matches, source):
             "status_used": bool(match.get("status_used")) if match else False,
             "status_dp_overlap": match.get("status_dp_overlap", []) if match else [],
             "status_match_confidence": match.get("status_match_confidence") if match else None,
+            "status_latency_ms": match.get("status_latency_ms") if match else None,
+            "status_low_latency": match.get("status_low_latency") if match else False,
+            "open_ports": nmap_by_ip.get(match.get("ip"), {}).get("ports", []) if match else [],
             "device_mac": norm_mac(device.get("mac")),
-            "ports": [6668] if current else [],
+            "ports": nmap_by_ip.get(current, {}).get("ports", []) if current else [],
         }
 
         for control in device.get("controls", []):
@@ -2388,12 +2477,16 @@ def _status_probe_one(ip: str, device: dict, timeout: float) -> dict:
                     obj.set_socketTimeout(timeout)
                 except Exception:
                     pass
+            status_started = time.perf_counter()
             status_payload = obj.status()
+            latency_ms = round((time.perf_counter() - status_started) * 1000, 1)
             returned_dp_ids = _status_dp_id_set(status_payload)
             overlap = sorted(expected_dp_ids & returned_dp_ids, key=lambda value: int(value) if value.isdigit() else value)
             box["result"] = {
                 "success": bool(overlap) or bool(returned_dp_ids),
-                "match_confidence": "dp_overlap" if overlap else ("status_positive_no_overlap" if returned_dp_ids else "no_status_dps"),
+                "match_confidence": "dp_overlap" if overlap else ("low_latency_status_positive" if returned_dp_ids and latency_ms <= 200 else ("status_positive_no_overlap" if returned_dp_ids else "no_status_dps")),
+                "latency_ms": latency_ms,
+                "low_latency": latency_ms <= 200,
                 "status_payload": status_payload,
                 "returned_dp_ids": sorted(returned_dp_ids),
                 "expected_dp_ids": sorted(expected_dp_ids),
@@ -2502,6 +2595,9 @@ def _status_match_unresolved_lan(model, nmap_rows, matches, claimed_ids, claimed
                 "batch": batch_name,
                 "success": bool(result.get("success")),
                 "dp_overlap": result.get("dp_overlap", []),
+                "latency_ms": result.get("latency_ms"),
+                "low_latency": result.get("low_latency"),
+                "match_confidence": result.get("match_confidence"),
                 "error": result.get("error"),
             }
             with state_lock:
@@ -2516,6 +2612,8 @@ def _status_match_unresolved_lan(model, nmap_rows, matches, claimed_ids, claimed
                         "nmap_mac": norm_mac(next((row.get("mac") for row in nmap_rows if private_ip(row.get("ip")) == ip), None)),
                         "status_dp_overlap": result.get("dp_overlap", []),
                         "status_match_confidence": result.get("match_confidence"),
+                        "status_latency_ms": result.get("latency_ms"),
+                        "status_low_latency": result.get("low_latency"),
                         "status_used": True,
                     }
                     added += 1
@@ -2574,15 +2672,16 @@ def apply_arp(model):
     udp_thread.start()
 
     networks = configured_scan_networks()
-    # Fast scanner path: TCP 6668 first. Nmap is optional/enrichment only,
+    scan_ports = tuya_tcp_scan_ports()
+    # Fast scanner path: configured Tuya TCP ports first. Nmap is optional/enrichment only,
     # because Windows nmap can make the UI look frozen. Set MONIK_USE_NMAP=1
     # when exact nmap output is required.
-    fallback = tcp_tuya_port_scan(networks, (6668,))
+    fallback = tcp_tuya_port_scan(networks, scan_ports)
     nmap_result = {
         "success": bool(fallback.get("candidate_count")),
-        "commands": ["fast tcp scan 6668"],
+        "commands": [f"fast tcp scan {','.join(str(port) for port in scan_ports)}"],
         "candidates": [
-            {"ip": row["ip"], "mac": None, "ports": row.get("ports", [6668]), "source": "fast_tcp_6668"}
+            {"ip": row["ip"], "mac": None, "ports": row.get("ports", list(scan_ports)), "source": "fast_tcp_tuya_ports"}
             for row in fallback.get("candidates", [])
         ],
         "candidate_count": fallback.get("candidate_count", 0),
@@ -2610,7 +2709,7 @@ def apply_arp(model):
         private_ip(row.get("ip")): row
         for row in nmap_rows
     }
-    model.setdefault("lan_scan", {})["command"] = " | ".join(nmap_result.get("commands", [])) or "fast tcp scan 6668"
+    model.setdefault("lan_scan", {})["command"] = " | ".join(nmap_result.get("commands", [])) or "fast tcp scan tuya ports"
 
     devices = model.get("devices", [])
     if not devices and nmap_rows:
@@ -3400,6 +3499,9 @@ class Handler(BaseHTTPRequestHandler):
                         txt(b.get("name")) or "browser.json",
                     )
                 )
+                with LOCK:
+                    previous_model = STATE.get("model")
+                model = preserve_existing_local_data(model, previous_model)
 
                 for device in model.get("devices", []):
                     device["tuya_online"] = None
