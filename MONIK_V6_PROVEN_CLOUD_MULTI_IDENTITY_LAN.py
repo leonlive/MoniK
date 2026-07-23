@@ -2257,7 +2257,9 @@ def _apply_lan_matches(model, nmap_rows, matches, source):
             ):
                 device["mac"] = match["nmap_mac"]
 
-        device["local_candidate"] = current
+        saved_local_ip = private_ip(device.get("lan_ip"))
+        has_saved_local = bool(saved_local_ip and device.get("local_key"))
+        device["local_candidate"] = bool(current or has_saved_local)
         device["current_lan_match"] = current
         device["local_match_method"] = (
             match.get("method") if match else None
@@ -2285,7 +2287,8 @@ def _apply_lan_matches(model, nmap_rows, matches, source):
             "status_low_latency": match.get("status_low_latency") if match else False,
             "open_ports": nmap_by_ip.get(match.get("ip"), {}).get("ports", []) if match else [],
             "device_mac": norm_mac(device.get("mac")),
-            "ports": nmap_by_ip.get(current, {}).get("ports", []) if current else [],
+            "ports": nmap_by_ip.get(match.get("ip"), {}).get("ports", []) if match else nmap_by_ip.get(saved_local_ip, {}).get("ports", []),
+            "saved_local_ip_preserved": bool(has_saved_local and not current),
         }
 
         for control in device.get("controls", []):
@@ -2328,6 +2331,7 @@ def _apply_lan_matches(model, nmap_rows, matches, source):
             routes["local"] = bool(
                 device.get("local_key")
                 and device_id
+                and private_ip(device.get("lan_ip"))
                 and local_command
             )
             routes["local_current"] = bool(
@@ -2360,9 +2364,7 @@ def _apply_lan_matches(model, nmap_rows, matches, source):
                 "local_current"
             )
         )
-        coverage["local_route_ready"] = coverage[
-            "local_current_lan_ready"
-        ]
+        coverage["local_route_ready"] = coverage["local_data_ready"]
         coverage["tuya_cloud_route_ready"] = sum(
             1
             for control in device.get("controls", [])
@@ -3232,8 +3234,6 @@ def helper_path():
 
 
 def local_execute(device, actions):
-    if not device.get("current_lan_match"):
-        raise ValueError("Local data exists, but no exact current-LAN identity match was found.")
     ip = private_ip(device.get("lan_ip"))
     if not ip:
         raise ValueError(
