@@ -233,6 +233,65 @@ def find_private_ip_deep(value: Any) -> str | None:
     return None
 
 
+def find_public_ip_deep(value: Any) -> str | None:
+    if isinstance(value, dict):
+        for key in (
+            "external_ip", "externalIp", "public_ip", "publicIp", "wan_ip",
+            "wanIp", "publicAddress", "public_address", "ip"
+        ):
+            if key in value:
+                found = public_ip(value.get(key))
+                if found:
+                    return found
+        for child in value.values():
+            found = find_public_ip_deep(child)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for child in value:
+            found = find_public_ip_deep(child)
+            if found:
+                return found
+    elif isinstance(value, str):
+        match = re.search(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", value)
+        if match:
+            return public_ip(match.group(0))
+    return None
+
+
+def _looks_like_local_key(value: Any) -> bool:
+    s = txt(value)
+    return 8 <= len(s) <= 64 and not re.search(r"\s", s)
+
+
+def find_local_key_deep(value: Any, path: tuple[str, ...] = ()) -> str | None:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            key_text = str(key)
+            key_low = key_text.lower()
+            if key_low in {
+                "local_key", "localkey", "localkeystr", "local_key_plain",
+                "localkeyplain", "local_key_raw", "localkeyraw"
+            } and _looks_like_local_key(child):
+                return txt(child)
+            if (
+                key_low == "key"
+                and any("local" in part.lower() for part in path)
+                and _looks_like_local_key(child)
+            ):
+                return txt(child)
+        for key, child in value.items():
+            found = find_local_key_deep(child, path + (str(key),))
+            if found:
+                return found
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            found = find_local_key_deep(child, path + (str(index),))
+            if found:
+                return found
+    return None
+
+
 def find_mac_deep(value: Any) -> str | None:
     """Return the first exact MAC address found anywhere in one record."""
     if isinstance(value, dict):
@@ -318,7 +377,7 @@ def identity(record: dict, yid_to_external: dict[str, str] | None = None) -> dic
     ext = txt(first(record.get("external_id"), record.get("external_device_id")))
     tid = txt(first(record.get("deviceId"), record.get("device_id"), record.get("devId"), record.get("dev_id")))
     ylike = bool(ext or record.get("skill_id") or txt(record.get("type")).startswith("devices.types.") or (isinstance(record.get("capabilities"), list) and is_uuid(raw_id)))
-    tlike = bool(record.get("local_key") or record.get("localKey") or record.get("product_id") or record.get("productId") or record.get("category") or record.get("function") or record.get("status_range") or record.get("local_strategy"))
+    tlike = bool(record.get("local_key") or record.get("localKey") or find_local_key_deep(record) or record.get("product_id") or record.get("productId") or record.get("category") or record.get("function") or record.get("status_range") or record.get("local_strategy"))
     if not yid and ylike and is_uuid(raw_id):
         yid = raw_id
     if not ext and yid and yid_to_external:
@@ -921,7 +980,31 @@ def build(raw: Any, source: str) -> dict:
             info.get("local_ip"),
             info.get("last_ip"),
             info.get("ip"),
-        ); g["lan_ip"] = first(g["lan_ip"], private_ip(ip)); ex = first(record.get("external_ip"), record.get("public_ip"), record.get("ip") if public_ip(record.get("ip")) else None); g["external_ip"] = first(g["external_ip"], public_ip(ex)); g["local_key"] = first(g["local_key"], record.get("local_key"), record.get("localKey")); g["protocol_version"] = first(g["protocol_version"], record.get("protocolVersion"), record.get("protocol_version"), record.get("version")); g["lan_ip"] = first(g["lan_ip"], find_private_ip_deep(record)); g["status"].update(status_map(record)); _dpm,_dps=dp_map(record); g["dp_map"].update(_dpm); g["dp_sources"].update(_dps)
+        )
+        g["lan_ip"] = first(g["lan_ip"], private_ip(ip), find_private_ip_deep(record))
+        ex = first(
+            record.get("external_ip"),
+            record.get("externalIp"),
+            record.get("public_ip"),
+            record.get("publicIp"),
+            record.get("ip") if public_ip(record.get("ip")) else None,
+            find_public_ip_deep(record),
+        )
+        g["external_ip"] = first(g["external_ip"], public_ip(ex))
+        g["local_key"] = first(
+            g["local_key"],
+            record.get("local_key"),
+            record.get("localKey"),
+            find_local_key_deep(record),
+        )
+        g["protocol_version"] = first(
+            g["protocol_version"],
+            record.get("protocolVersion"),
+            record.get("protocol_version"),
+            record.get("version"),
+            record.get("pv"),
+        )
+        g["status"].update(status_map(record)); _dpm,_dps=dp_map(record); g["dp_map"].update(_dpm); g["dp_sources"].update(_dps)
         for code, fn in functions(record).items():
             old = g["functions"].setdefault(code, fn)
             if old is not fn:
