@@ -2439,8 +2439,8 @@ def _status_match_unresolved_lan(model, nmap_rows, matches, claimed_ids, claimed
         }
 
     timeout = max(0.25, float(os.environ.get("MONIK_STATUS_MATCH_TIMEOUT", "0.65")))
-    max_probes = max(1, int(os.environ.get("MONIK_STATUS_MATCH_MAX_PROBES", "32")))
-    worker_count = max(1, int(os.environ.get("MONIK_STATUS_MATCH_WORKERS", "8")))
+    max_probes = max(1, int(os.environ.get("MONIK_STATUS_MATCH_MAX_PROBES", "160")))
+    worker_count = max(1, int(os.environ.get("MONIK_STATUS_MATCH_WORKERS", "24")))
     devices = [
         device for device in model.get("devices", [])
         if txt(device.get("tuya_id"))
@@ -2526,7 +2526,7 @@ def _status_match_unresolved_lan(model, nmap_rows, matches, claimed_ids, claimed
     ]
     for thread in threads:
         thread.start()
-    deadline = time.monotonic() + float(os.environ.get("MONIK_STATUS_MATCH_DEADLINE", "6.0"))
+    deadline = time.monotonic() + float(os.environ.get("MONIK_STATUS_MATCH_DEADLINE", "8.0"))
     for thread in threads:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -2540,7 +2540,7 @@ def _status_match_unresolved_lan(model, nmap_rows, matches, claimed_ids, claimed
         "timeout_seconds": timeout,
         "max_probes": max_probes,
         "workers": worker_count,
-        "deadline_seconds": float(os.environ.get("MONIK_STATUS_MATCH_DEADLINE", "6.0")),
+        "deadline_seconds": float(os.environ.get("MONIK_STATUS_MATCH_DEADLINE", "8.0")),
         "external_ip_groups": [
             {"external_ip": ip, "device_count": len(rows)} for ip, rows in external_groups
         ],
@@ -2661,6 +2661,16 @@ def apply_arp(model):
             for row in nmap_rows
         ]
         devices = model["devices"]
+
+    external_groups_for_current_lan = _external_ip_probe_groups(devices)
+    active_external_ips = {external_ip for external_ip, _rows in external_groups_for_current_lan}
+    for device in devices:
+        device_external_ip = public_ip(device.get("external_ip"))
+        device["same_external_ip_group"] = bool(device_external_ip and device_external_ip in active_external_ips)
+        if device["same_external_ip_group"] and not device.get("current_lan_match"):
+            device.setdefault("warnings", []).append(
+                "Same external IP group as the current LAN scan; not labeled as other network, but exact local IP is still unresolved."
+            )
 
     indexes = _identity_indexes(devices)
 
@@ -3294,7 +3304,7 @@ for(let d of M.devices){
     '<td style="padding:8px;border:1px solid var(--l);font-family:Consolas">'+esc(d.tuya_id||'—')+'</td>'+
     '<td style="padding:8px;border:1px solid var(--l)">'+esc(d.lan_ip||'—')+'</td>'+
     '<td style="padding:8px;border:1px solid var(--l)" class="'+(localData?'ok':'bad')+'">'+(localData?'READY':'MISSING')+'</td>'+
-    '<td style="padding:8px;border:1px solid var(--l)" class="'+(localNow?'ok':'bad')+'">'+(localNow?'CONNECTED':'OTHER NETWORK')+'</td>'+
+    '<td style="padding:8px;border:1px solid var(--l)" class="'+(localNow||d.same_external_ip_group?'ok':'bad')+'">'+(localNow?'CONNECTED':(d.same_external_ip_group?'SAME WAN / NEED IP':'OTHER NETWORK'))+'</td>'+
     '<td style="padding:8px;border:1px solid var(--l)" class="'+(tuyaReady?'ok':(tuyaPending?'':'bad'))+'">'+(tuyaReady?'READY':(tuyaPending&&tuyaCapable?'PENDING':(tuyaCapable?'ACCOUNT ERROR':'MISSING')))+'</td>'+
     '<td style="padding:8px;border:1px solid var(--l)" class="'+(d.tuya_online===true?'ok':(d.tuya_online===false?'bad':''))+'">'+(d.tuya_online===true?'ONLINE':(d.tuya_online===false?'OFFLINE':'UNKNOWN'))+'</td>'+
     '<td style="padding:8px;border:1px solid var(--l)" class="'+(yandexReady?'ok':'bad')+'">'+(yandexReady?'READY':'NO')+'</td>'+
@@ -3302,7 +3312,7 @@ for(let d of M.devices){
   tbody.append(tr);
 }
 table.append(tbody);root.append(table);
-for(let d of M.devices){if(q&&!pretty(d).toLowerCase().includes(q))continue;let card=document.createElement("article");card.className="device";card.innerHTML='<div class="head"><div><h2>'+esc(d.name)+'</h2><div class="ids">physical='+esc(d.physical_id)+'<br>tuya='+esc(d.tuya_id||'—')+'</div></div><div class="badges"><span class="badge">'+esc(d.category||'no category')+'</span><span class="badge">'+esc(d.product_id||'no productId')+'</span><span class="badge '+(d.has_local_key?'ok':'bad')+'">LOCAL DATA '+(d.has_local_key?'READY':'MISSING')+'</span><span class="badge '+(d.current_lan_match?'ok':'bad')+'">CURRENT LAN '+(d.current_lan_match?esc(d.lan_ip||'CONNECTED'):'OTHER NETWORK')+'</span></div></div>';let cov=document.createElement("div");cov.className="coverage";for(let [k,v] of Object.entries(d.coverage))cov.innerHTML+='<div class="metric"><b>'+esc(v)+'</b><span>'+esc(k)+'</span></div>';card.append(cov);for(let w of d.warnings||[]){let x=document.createElement("div");x.className="warning";x.textContent=w;card.append(x)}let g=document.createElement("div");g.className="grid";for(let c of d.controls)g.append(rc(d,c));card.append(g);let de=document.createElement("details");de.innerHTML='<summary>Построен модел / endpoints / status</summary><pre>'+esc(pretty({logical_endpoints:d.logical_endpoints,status_from_json:d.status,lan_discovery:d.lan_discovery,first_local_status:d.local_status_once,schema_channel_count:d.schema_channel_count,coverage:d.coverage,warnings:d.warnings}))+'</pre>';card.append(de);root.append(card)}}function open(){ $("modal").classList.add("open");$("form").classList.remove("hidden");$("qa").classList.add("hidden");$("qr").innerHTML=""}function close(){ $("modal").classList.remove("open");if(P){clearInterval(P);P=null}}async function start(){let u=$("uc").value.trim();if(!u)return alert("Въведи User Code");try{let r=await api("/api/qr/start",{method:"POST",body:JSON.stringify({user_code:u})});$("form").classList.add("hidden");$("qa").classList.remove("hidden");$("qr").innerHTML="";new QRCode($("qr"),{text:r.qr_payload,width:340,height:340,correctLevel:QRCode.CorrectLevel.M});$("qs").textContent="Сканирай и потвърди...";P=setInterval(async()=>{try{let s=await api("/api/qr/poll",{method:"POST",body:"{}"});if(s.approved){clearInterval(P);P=null;$("qr").innerHTML="";if(s.model){M=s.model;render()}$("qs").textContent=`Tuya account connected: ${s.device_count||0} devices. The MoniK server session is saved and reused automatically.`}else $("qs").textContent="Изчакване: "+(s.msg||s.code||"pending")}catch(e){$("qs").textContent=String(e)}},2000)}catch(e){alert(String(e))}}function download(){if(!M)return alert("Зареди JSON");let b=new Blob([pretty(M)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="MONIK_UNIVERSAL_BUILT_MODEL.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}$("load").onclick=load;$("search").oninput=render;$("connect").onclick=open;$("status").onclick=async()=>{try{$("meta").textContent="Refreshing the manually shared Tuya account...";let r=await api("/api/tuya/status",{method:"POST",body:"{}"});if(r.model){M=r.model;render()}else $("meta").textContent=pretty(r)}catch(e){$("meta").textContent="Tuya account refresh error: "+e.message}};$("arp").onclick=async()=>{try{$("meta").textContent="Tuya LAN discovery + Nmap + exact account identity comparison...";M=await api("/api/arp");render()}catch(e){alert(String(e))}};$("close").onclick=close;$("start").onclick=start;$("download").onclick=download;$("stop").onclick=async()=>{try{await api("/api/stop",{method:"POST",body:"{}"})}catch{}document.body.innerHTML='<h2 style="padding:30px">Сървърът е спрян.</h2>'};</script></body></html>'''
+for(let d of M.devices){if(q&&!pretty(d).toLowerCase().includes(q))continue;let card=document.createElement("article");card.className="device";card.innerHTML='<div class="head"><div><h2>'+esc(d.name)+'</h2><div class="ids">physical='+esc(d.physical_id)+'<br>tuya='+esc(d.tuya_id||'—')+'</div></div><div class="badges"><span class="badge">'+esc(d.category||'no category')+'</span><span class="badge">'+esc(d.product_id||'no productId')+'</span><span class="badge '+(d.has_local_key?'ok':'bad')+'">LOCAL DATA '+(d.has_local_key?'READY':'MISSING')+'</span><span class="badge '+(d.current_lan_match||d.same_external_ip_group?'ok':'bad')+'">CURRENT LAN '+(d.current_lan_match?esc(d.lan_ip||'CONNECTED'):(d.same_external_ip_group?'SAME WAN / NEED IP':'OTHER NETWORK'))+'</span></div></div>';let cov=document.createElement("div");cov.className="coverage";for(let [k,v] of Object.entries(d.coverage))cov.innerHTML+='<div class="metric"><b>'+esc(v)+'</b><span>'+esc(k)+'</span></div>';card.append(cov);for(let w of d.warnings||[]){let x=document.createElement("div");x.className="warning";x.textContent=w;card.append(x)}let g=document.createElement("div");g.className="grid";for(let c of d.controls)g.append(rc(d,c));card.append(g);let de=document.createElement("details");de.innerHTML='<summary>Построен модел / endpoints / status</summary><pre>'+esc(pretty({logical_endpoints:d.logical_endpoints,status_from_json:d.status,lan_discovery:d.lan_discovery,first_local_status:d.local_status_once,schema_channel_count:d.schema_channel_count,coverage:d.coverage,warnings:d.warnings}))+'</pre>';card.append(de);root.append(card)}}function open(){ $("modal").classList.add("open");$("form").classList.remove("hidden");$("qa").classList.add("hidden");$("qr").innerHTML=""}function close(){ $("modal").classList.remove("open");if(P){clearInterval(P);P=null}}async function start(){let u=$("uc").value.trim();if(!u)return alert("Въведи User Code");try{let r=await api("/api/qr/start",{method:"POST",body:JSON.stringify({user_code:u})});$("form").classList.add("hidden");$("qa").classList.remove("hidden");$("qr").innerHTML="";new QRCode($("qr"),{text:r.qr_payload,width:340,height:340,correctLevel:QRCode.CorrectLevel.M});$("qs").textContent="Сканирай и потвърди...";P=setInterval(async()=>{try{let s=await api("/api/qr/poll",{method:"POST",body:"{}"});if(s.approved){clearInterval(P);P=null;$("qr").innerHTML="";if(s.model){M=s.model;render()}$("qs").textContent=`Tuya account connected: ${s.device_count||0} devices. The MoniK server session is saved and reused automatically.`}else $("qs").textContent="Изчакване: "+(s.msg||s.code||"pending")}catch(e){$("qs").textContent=String(e)}},2000)}catch(e){alert(String(e))}}function download(){if(!M)return alert("Зареди JSON");let b=new Blob([pretty(M)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="MONIK_UNIVERSAL_BUILT_MODEL.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}$("load").onclick=load;$("search").oninput=render;$("connect").onclick=open;$("status").onclick=async()=>{try{$("meta").textContent="Refreshing the manually shared Tuya account...";let r=await api("/api/tuya/status",{method:"POST",body:"{}"});if(r.model){M=r.model;render()}else $("meta").textContent=pretty(r)}catch(e){$("meta").textContent="Tuya account refresh error: "+e.message}};$("arp").onclick=async()=>{try{$("meta").textContent="Tuya LAN discovery + Nmap + exact account identity comparison...";M=await api("/api/arp");render()}catch(e){alert(String(e))}};$("close").onclick=close;$("start").onclick=start;$("download").onclick=download;$("stop").onclick=async()=>{try{await api("/api/stop",{method:"POST",body:"{}"})}catch{}document.body.innerHTML='<h2 style="padding:30px">Сървърът е спрян.</h2>'};</script></body></html>'''
 
 
 
