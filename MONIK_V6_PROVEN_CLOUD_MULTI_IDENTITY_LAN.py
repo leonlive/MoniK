@@ -1107,9 +1107,10 @@ def merge_tuya_account(model: dict, account: dict) -> dict:
 
 def preserve_existing_local_data(model: dict, previous_model: dict | None) -> dict:
     """
-    Keep proven local/LAN control fields when a newly loaded JSON snapshot omits
-    them. New Tuya/Yandex/account JSON may add missing data, but it must not
-    erase local_key, LAN IP/MAC or protocol data that already worked locally.
+    Keep proven Tuya/local/LAN control fields when a newly loaded JSON snapshot
+    omits or contradicts them. New Tuya/Yandex/account JSON may add schema and
+    missing buttons, but it must not erase or replace a known local_key, LAN IP,
+    external IP, MAC, protocol, DP/status map or previously built local control.
     """
     if not isinstance(previous_model, dict):
         return model
@@ -1124,9 +1125,10 @@ def preserve_existing_local_data(model: dict, previous_model: dict | None) -> di
             if key:
                 previous_by_key.setdefault(key, device)
 
-    preserved_fields = (
+    local_truth_fields = (
         "local_key",
         "lan_ip",
+        "external_ip",
         "mac",
         "protocol_version",
         "current_lan_match",
@@ -1134,6 +1136,7 @@ def preserve_existing_local_data(model: dict, previous_model: dict | None) -> di
         "lan_discovery",
         "local_status_once",
     )
+    fill_only_fields = ("uuid", "category", "product_id", "product_name", "manufacturer", "model")
 
     for device in model.get("devices", []):
         previous = None
@@ -1149,19 +1152,54 @@ def preserve_existing_local_data(model: dict, previous_model: dict | None) -> di
             continue
 
         kept = []
-        for field in preserved_fields:
+        for field in local_truth_fields:
+            old_value = previous.get(field)
+            if old_value not in (None, "", {}, []):
+                if device.get(field) != old_value:
+                    device[field] = old_value
+                    kept.append(field)
+
+        for field in fill_only_fields:
             if device.get(field) in (None, "", {}, []):
                 old_value = previous.get(field)
                 if old_value not in (None, "", {}, []):
                     device[field] = old_value
                     kept.append(field)
 
+        if isinstance(previous.get("status"), dict):
+            device["status"] = {**sd(previous.get("status")), **sd(device.get("status"))}
+
+        previous_controls = {
+            txt(control.get("code")): control
+            for control in previous.get("controls", []) or []
+            if txt(control.get("code"))
+        }
+        current_controls = {
+            txt(control.get("code")): control
+            for control in device.get("controls", []) or []
+            if txt(control.get("code"))
+        }
+        for code, old_control in previous_controls.items():
+            if code not in current_controls:
+                device.setdefault("controls", []).append(
+                    json.loads(json.dumps(old_control, ensure_ascii=False))
+                )
+                kept.append(f"control:{code}")
+
         if device.get("local_key"):
             device["has_local_key"] = True
             for control in device.get("controls", []):
                 routes = control.setdefault("routes", {})
-                if txt(control.get("dp_id") or control.get("local_dp") or control.get("code")):
-                    routes["local"] = bool(device.get("lan_ip") and device.get("local_key"))
+                local_code = txt(control.get("dp_id") or control.get("local_dp") or control.get("code"))
+                if local_code:
+                    routes["local"] = bool(
+                        private_ip(device.get("lan_ip"))
+                        and device.get("local_key")
+                    )
+                    routes["local_current"] = bool(
+                        routes["local"]
+                        and device.get("current_lan_match")
+                    )
 
         if kept:
             warnings = device.setdefault("warnings", [])
