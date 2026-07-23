@@ -1446,11 +1446,12 @@ def normalize_tuya_scan_result(result: Any) -> list[dict]:
 
         row = {
             "device_id": txt(first(
-                value.get("gwId"),
-                value.get("id"),
                 value.get("devId"),
                 value.get("deviceId"),
                 value.get("device_id"),
+                value.get("id"),
+                value.get("gwId"),
+                value.get("gw_id"),
             )) or None,
             "uuid": txt(first(
                 value.get("uuid"),
@@ -1464,8 +1465,8 @@ def normalize_tuya_scan_result(result: Any) -> list[dict]:
             "gateway_id": txt(first(
                 value.get("gatewayId"),
                 value.get("gateway_id"),
-                value.get("gwId"),
                 value.get("gw_id"),
+                value.get("gwId"),
             )) or None,
             "parent_id": txt(first(
                 value.get("parentId"),
@@ -2193,6 +2194,7 @@ def _apply_lan_matches(model, nmap_rows, matches, source):
             ),
             "status_used": bool(match.get("status_used")) if match else False,
             "status_dp_overlap": match.get("status_dp_overlap", []) if match else [],
+            "status_match_confidence": match.get("status_match_confidence") if match else None,
             "device_mac": norm_mac(device.get("mac")),
             "ports": [6668] if current else [],
         }
@@ -2390,7 +2392,8 @@ def _status_probe_one(ip: str, device: dict, timeout: float) -> dict:
             returned_dp_ids = _status_dp_id_set(status_payload)
             overlap = sorted(expected_dp_ids & returned_dp_ids, key=lambda value: int(value) if value.isdigit() else value)
             box["result"] = {
-                "success": bool(overlap),
+                "success": bool(overlap) or bool(returned_dp_ids),
+                "match_confidence": "dp_overlap" if overlap else ("status_positive_no_overlap" if returned_dp_ids else "no_status_dps"),
                 "status_payload": status_payload,
                 "returned_dp_ids": sorted(returned_dp_ids),
                 "expected_dp_ids": sorted(expected_dp_ids),
@@ -2512,6 +2515,7 @@ def _status_match_unresolved_lan(model, nmap_rows, matches, claimed_ids, claimed
                         "version": result.get("protocol_version") or device.get("protocol_version"),
                         "nmap_mac": norm_mac(next((row.get("mac") for row in nmap_rows if private_ip(row.get("ip")) == ip), None)),
                         "status_dp_overlap": result.get("dp_overlap", []),
+                        "status_match_confidence": result.get("match_confidence"),
                         "status_used": True,
                     }
                     added += 1
